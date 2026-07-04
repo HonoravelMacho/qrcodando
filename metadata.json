@@ -1,0 +1,6 @@
+{
+  "name": "Qrcodando",
+  "description": "Gerador de QR Codes artísticos e customizáveis, desenvolvido com PySide6 e Python.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
