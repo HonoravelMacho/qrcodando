@@ -63,6 +63,79 @@ const ALIGNMENT_PATTERNS: { [key: number]: number[] } = {
   40: [6, 30, 58, 86, 114, 142, 170]
 };
 
+const getCirclePath = (cx: number, cy: number, size: number): Path2D => {
+  const path = new Path2D();
+  path.arc(cx, cy, size * 0.51, 0, 2 * Math.PI);
+  return path;
+};
+
+const getHeartPath = (cx: number, cy: number, size: number): Path2D => {
+  const path = new Path2D();
+  const w = size;
+  const h = size;
+  const x0 = cx - w / 2;
+  const y0 = cy - h / 2 + h * 0.04;
+  
+  const topCleftY = y0 + h * 0.20;
+  const bottomY = y0 + h * 0.96;
+  const leftPeakX = x0 + w * 0.12;
+  const leftPeakY = y0 + h * 0.04;
+  const rightPeakX = x0 + w * 0.88;
+  const rightPeakY = y0 + h * 0.04;
+  const leftX = x0 + w * 0.01;
+  const leftY = y0 + h * 0.38;
+  const rightX = x0 + w * 0.99;
+  const rightY = y0 + h * 0.38;
+
+  path.moveTo(cx, topCleftY);
+  path.bezierCurveTo(leftPeakX, leftPeakY, leftX, leftY - h*0.1, leftX, leftY);
+  path.bezierCurveTo(leftX, leftY + h*0.26, x0 + w * 0.22, bottomY - h*0.08, cx, bottomY);
+  path.bezierCurveTo(x0 + w * 0.78, bottomY - h*0.08, rightX, rightY + h*0.26, rightX, rightY);
+  path.bezierCurveTo(rightX, rightY - h*0.1, rightPeakX, rightPeakY, cx, topCleftY);
+  path.closePath();
+  return path;
+};
+
+const getBloodDropletPath = (cx: number, cy: number, size: number): Path2D => {
+  const path = new Path2D();
+  const radius = size * 0.5;
+  const offsetY = cy + 0.18 * radius; // Center is shifted down slightly to fit the tapered tip
+  
+  const tipY = offsetY - 1.15 * radius;
+  path.moveTo(cx, tipY);
+  
+  const steps = 60;
+  // Right side tapered curve
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const adjY = 1.15 * (1 - t);
+    const factor = 1 - (adjY / 1.15);
+    const limitX = 0.82 * factor * Math.sqrt(1 + (adjY / 1.15));
+    
+    const canvasX = cx + limitX * radius;
+    const canvasY = offsetY - adjY * radius;
+    path.lineTo(canvasX, canvasY);
+  }
+  
+  // Bottom bulb
+  path.arc(cx, offsetY, 0.82 * radius, 0, Math.PI, false);
+  
+  // Left side tapered curve
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const adjY = 1.15 * t;
+    const factor = 1 - (adjY / 1.15);
+    const limitX = 0.82 * factor * Math.sqrt(1 + (adjY / 1.15));
+    
+    const canvasX = cx - limitX * radius;
+    const canvasY = offsetY - adjY * radius;
+    path.lineTo(canvasX, canvasY);
+  }
+  
+  path.closePath();
+  return path;
+};
+
 interface QRStudioProps {
   onStyleUpdate: (style: string, fg: string, bg: string, hasLogo: boolean) => void;
 }
@@ -71,6 +144,9 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
   // Configs
   const [text, setText] = useState('https://github.com/HonoravelMacho/qrcodando');
   const [pointStyle, setPointStyle] = useState<'square' | 'circle' | 'heart' | 'star' | 'connected' | 'liquid'>('circle');
+  const [qrShape, setQrShape] = useState<'square' | 'circle' | 'heart' | 'blood'>('square');
+  const [drawOutline, setDrawOutline] = useState<boolean>(true);
+  const [outlineWidth, setOutlineWidth] = useState<number>(6);
   const [fgColor, setFgColor] = useState<[number, number, number]>([15, 23, 42]); // #0F172A (slate-900) - Dark foreground
   const [bgColor, setBgColor] = useState<[number, number, number]>([255, 255, 255]); // #FFFFFF (white) - Light background
   const [bgMode, setBgMode] = useState<'solid' | 'radial' | 'transparent'>('solid');
@@ -126,7 +202,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
   // Main Canvas Rendering Loop
   useEffect(() => {
     renderQRCode();
-  }, [text, pointStyle, fgColor, bgColor, bgMode, radialColor, paddingRatio, logoImg]);
+  }, [text, pointStyle, qrShape, drawOutline, outlineWidth, fgColor, bgColor, bgMode, radialColor, paddingRatio, logoImg]);
 
   const renderQRCode = async () => {
     const canvas = canvasRef.current;
@@ -165,6 +241,19 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
       const borderModules = 4;
       const borderPx = borderModules * (width / (N + 2 * borderModules));
       const boxSize = (width - 2 * borderPx) / N;
+
+      // Prepare overall shape path
+      const qrSize = width - 2 * borderPx;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      let shapePath: Path2D | null = null;
+      if (qrShape === 'circle') {
+        shapePath = getCirclePath(centerX, centerY, qrSize);
+      } else if (qrShape === 'heart') {
+        shapePath = getHeartPath(centerX, centerY, qrSize);
+      } else if (qrShape === 'blood') {
+        shapePath = getBloodDropletPath(centerX, centerY, qrSize);
+      }
 
       // Prepare logo analyzer if we have a logo
       let logoWidth = 0;
@@ -262,6 +351,13 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             (r < 8 && c >= N - 8) ||
             (r >= N - 8 && c < 8)
           );
+
+          // If a custom overall shape silhouette is selected, filter out non-finder modules falling outside of it
+          if (shapePath && !isFinder) {
+            if (!ctx.isPointInPath(shapePath, cx, cy)) {
+              continue; // Skip this module!
+            }
+          }
 
           // Alignment patterns should also remain solid squares for robust scanning
           const isAlignmentPattern = (() => {
@@ -379,6 +475,16 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             }
           }
         }
+      }
+
+      // Draw shape outline if requested
+      if (qrShape !== 'square' && drawOutline && shapePath) {
+        ctx.beginPath();
+        ctx.strokeStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+        ctx.lineWidth = outlineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke(shapePath);
       }
 
       // Calculate skipped data modules pct
@@ -525,6 +631,80 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               </button>
             ))}
           </div>
+        </div>
+
+        <hr className="border-[#334155]" />
+
+        {/* Overall Shape Silhouette Selector */}
+        <div>
+          <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">
+            Silhueta Geral (Formas Personalizadas)
+          </label>
+          <p className="text-[11px] text-[#94a3b8] mb-3">
+            Escolha uma máscara externa para recortar o QR Code em formas especiais.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { id: 'square', label: 'Quadrado', icon: <Square className="w-4 h-4" /> },
+              { id: 'circle', label: 'Círculo', icon: <Circle className="w-4 h-4" /> },
+              { id: 'heart', label: 'Coração', icon: <Heart className="w-4 h-4" /> },
+              { id: 'blood', label: 'Gota Sangue', icon: <Droplets className="w-4 h-4 text-rose-500" /> }
+            ].map((shape) => (
+              <button
+                key={shape.id}
+                onClick={() => setQrShape(shape.id as any)}
+                className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                  qrShape === shape.id
+                    ? 'bg-[#38bdf8]/10 border-[#38bdf8] text-[#38bdf8] font-bold'
+                    : 'bg-[#0f172a] border-[#334155] text-[#94a3b8] hover:text-[#f1f5f9] hover:bg-white/5'
+                }`}
+              >
+                {shape.icon}
+                <span className="text-[11px] uppercase font-semibold">{shape.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Sub-config for borders (shown when shape !== square) */}
+          {qrShape !== 'square' && (
+            <div className="mt-4 bg-[#0f172a] border border-[#334155] rounded-xl p-4 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs text-white font-semibold">Desenhar Contorno da Forma</span>
+                  <span className="text-[10px] text-[#64748b]">Exibe traços de alta definição delimitando a forma</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={drawOutline}
+                    onChange={(e) => setDrawOutline(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-[#334155] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#38bdf8]"></div>
+                </label>
+              </div>
+
+              {drawOutline && (
+                <div className="border-t border-[#334155]/50 pt-3">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-[10px] font-semibold text-[#64748b] uppercase tracking-widest">
+                      Espessura do Contorno (Borda):
+                    </label>
+                    <span className="text-xs font-mono text-[#38bdf8] font-semibold">{outlineWidth}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="2"
+                    max="14"
+                    step="1"
+                    value={outlineWidth}
+                    onChange={(e) => setOutlineWidth(parseInt(e.target.value))}
+                    className="w-full accent-[#38bdf8] h-1.5 bg-[#1e293b] rounded-lg cursor-pointer"
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <hr className="border-[#334155]" />
