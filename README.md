@@ -1,20 +1,83 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 🎨 Qrcodando (v1.0.0)
 
-# Run and deploy your AI Studio app
+> Um estúdio moderno, interativo e de alto desempenho para criação de **QR Codes Artísticos e Customizáveis**.
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/7ec435d7-2bd3-432a-92e0-24bac35f9357
+## 🚀 Sobre o Projeto
 
-## Run Locally
+**Qrcodando** é uma ferramenta web desenvolvida para transformar códigos QR tradicionais em designs únicos e atraentes, mantendo a integridade de leitura rápida e robusta. Você pode escolher diferentes estilos de pontos/módulos, gerenciar cores em tempo real e até incluir logotipos personalizados com desvio automático de colisão.
 
-**Prerequisites:**  Node.js
+### ✨ Recursos Principais:
+- **Estilos de Módulos (Pontos):** 
+  - **Quadrados:** O visual clássico e ultra-scannable.
+  - **Círculos:** Suave e moderno.
+  - **Corações:** Proporções de curvas perfeitas e fáceis de ler.
+  - **Estrelas:** Formato sofisticado de 4 pontas.
+  - **Conexões:** Conecta dinamicamente pontos adjacentes para um visual fluido.
+  - **Líquido (Novo):** Pontos com efeito de respingos orgânicos e respingos de satélite!
+- **Paleta de Cores Avançada:** Escolha entre preenchimento sólido clássico ou gradientes radiais suaves.
+- **Logotipos Personalizados:** Faça upload de imagens de logo com controle refinado de margem e detecção automática de colisão para que os códigos QR permaneçam perfeitamente legíveis.
+- **Visualização de Código em Tempo Real:** Explore e estude a implementação de baixo nível do motor de desenho de QR Code diretamente na interface.
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🛠️ Como Executar Localmente
+
+Siga o passo a passo abaixo para rodar o projeto no seu computador:
+
+### 1. Pré-requisitos
+Certifique-se de ter instalado em seu sistema:
+- [Node.js](https://nodejs.org/) (Versão 18 ou superior)
+- Um gerenciador de pacotes como **npm** (já incluso com o Node.js) ou **yarn**
+
+### 2. Baixar o Código
+Você pode clonar este repositório diretamente do seu terminal:
+```bash
+git clone https://github.com/HonoravelMacho/qrcodando.git
+cd qrcodando
+```
+
+### 3. Instalar as Dependências
+Execute o comando abaixo na pasta raiz do projeto para baixar as bibliotecas necessárias:
+```bash
+npm install
+```
+
+### 4. Iniciar o Servidor de Desenvolvimento
+Rode o comando a seguir para iniciar a aplicação localmente:
+```bash
+npm run dev
+```
+
+O terminal exibirá um link local (geralmente `http://localhost:3000` ou `http://localhost:5173`). Abra esse link no seu navegador para usar o estúdio!
+
+### 5. Construir para Produção (Build)
+Para compilar e otimizar a aplicação para publicação:
+```bash
+npm run build
+```
+
+---
+
+## 📦 Sobre a seção "Packages" do GitHub
+
+É perfeitamente normal que a seção **"Packages"** do GitHub na barra lateral direita esteja vazia (`No packages published`). 
+
+- **Por que está vazia?** Essa seção é reservada para bibliotecas de código ou pacotes reutilizáveis publicados no registro NPM (como se você estivesse criando uma ferramenta de desenvolvimento para outros programadores usarem via `npm install qrcodando`).
+- **Preciso disso?** Não! Este projeto é uma **aplicação web completa (SPA)** e não uma biblioteca de pacotes. O projeto funciona de forma 100% autônoma rodando localmente ou publicado em serviços de hospedagem estática (como GitHub Pages, Vercel ou Netlify).
+
+---
+
+## 💻 Tecnologias Utilizadas
+
+- **Framework:** [React 19](https://react.dev/) + [Vite](https://vite.dev/)
+- **Linguagem:** [TypeScript](https://www.typescriptlang.org/)
+- **Estilização:** [Tailwind CSS v4](https://tailwindcss.com/)
+- **Animações:** [Motion (Framer Motion)](https://motion.dev/)
+- **Ícones:** [Lucide React](https://lucide.dev/)
+
+---
+
+Desenvolvido com carinho para simplificar e revolucionar o design de códigos QR! ⭐ 
+Se você gostou deste projeto, não se esqueça de dar uma **Estrela (Star)** no repositório!
