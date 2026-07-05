@@ -175,7 +175,7 @@ export default function App() {
             </div>
             <div>
               <p className="text-zinc-300 font-bold tracking-wider">QRCODANDO</p>
-              <p className="text-[10px] text-[#64748b]">Desenvolvido em ambiente Pop!_OS com Zsh e editor Micro.</p>
+              <p className="text-[10px] text-[#38bdf8]">Transformando links em arte</p>
             </div>
           </div>
 

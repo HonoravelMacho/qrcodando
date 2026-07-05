@@ -63,77 +63,128 @@ const ALIGNMENT_PATTERNS: { [key: number]: number[] } = {
   40: [6, 30, 58, 86, 114, 142, 170]
 };
 
-const getCirclePath = (cx: number, cy: number, size: number): Path2D => {
-  const path = new Path2D();
-  path.arc(cx, cy, size * 0.51, 0, 2 * Math.PI);
-  return path;
-};
-
-const getHeartPath = (cx: number, cy: number, size: number): Path2D => {
-  const path = new Path2D();
-  const w = size;
-  const h = size;
-  const x0 = cx - w / 2;
-  const y0 = cy - h / 2 + h * 0.04;
-  
-  const topCleftY = y0 + h * 0.20;
-  const bottomY = y0 + h * 0.96;
-  const leftPeakX = x0 + w * 0.12;
-  const leftPeakY = y0 + h * 0.04;
-  const rightPeakX = x0 + w * 0.88;
-  const rightPeakY = y0 + h * 0.04;
-  const leftX = x0 + w * 0.01;
-  const leftY = y0 + h * 0.38;
-  const rightX = x0 + w * 0.99;
-  const rightY = y0 + h * 0.38;
-
-  path.moveTo(cx, topCleftY);
-  path.bezierCurveTo(leftPeakX, leftPeakY, leftX, leftY - h*0.1, leftX, leftY);
-  path.bezierCurveTo(leftX, leftY + h*0.26, x0 + w * 0.22, bottomY - h*0.08, cx, bottomY);
-  path.bezierCurveTo(x0 + w * 0.78, bottomY - h*0.08, rightX, rightY + h*0.26, rightX, rightY);
-  path.bezierCurveTo(rightX, rightY - h*0.1, rightPeakX, rightPeakY, cx, topCleftY);
-  path.closePath();
-  return path;
-};
-
-const getBloodDropletPath = (cx: number, cy: number, size: number): Path2D => {
-  const path = new Path2D();
-  const radius = size * 0.5;
-  const offsetY = cy + 0.18 * radius; // Center is shifted down slightly to fit the tapered tip
-  
-  const tipY = offsetY - 1.15 * radius;
-  path.moveTo(cx, tipY);
-  
-  const steps = 60;
-  // Right side tapered curve
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const adjY = 1.15 * (1 - t);
-    const factor = 1 - (adjY / 1.15);
-    const limitX = 0.82 * factor * Math.sqrt(1 + (adjY / 1.15));
-    
-    const canvasX = cx + limitX * radius;
-    const canvasY = offsetY - adjY * radius;
-    path.lineTo(canvasX, canvasY);
+const isPointInPolygon = (x: number, y: number, points: [number, number][]): boolean => {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i][0], yi = points[i][1];
+    const xj = points[j][0], yj = points[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
   }
-  
-  // Bottom bulb
-  path.arc(cx, offsetY, 0.82 * radius, 0, Math.PI, false);
-  
-  // Left side tapered curve
+  return inside;
+};
+
+const getCirclePoints = (cx: number, cy: number, size: number): [number, number][] => {
+  const points: [number, number][] = [];
+  const radius = size * 0.51;
+  const steps = 120;
+  for (let i = 0; i < steps; i++) {
+    const angle = (i / steps) * 2 * Math.PI;
+    points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+  }
+  return points;
+};
+
+const getHeartPoints = (cx: number, cy: number, size: number): [number, number][] => {
+  const points: [number, number][] = [];
+  const steps = 125;
+  const scale = size / 31.5; // Perfectly scaled to fit full width nicely
+  const offsetY = cy + size * 0.06;
   for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const adjY = 1.15 * t;
-    const factor = 1 - (adjY / 1.15);
-    const limitX = 0.82 * factor * Math.sqrt(1 + (adjY / 1.15));
-    
-    const canvasX = cx - limitX * radius;
-    const canvasY = offsetY - adjY * radius;
-    path.lineTo(canvasX, canvasY);
+    const t = (i / steps) * 2 * Math.PI;
+    // Classic heart parametric equations
+    const x = cx + scale * 16 * Math.pow(Math.sin(t), 3);
+    const y = offsetY - scale * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+    points.push([x, y]);
   }
-  
-  path.closePath();
-  return path;
+  return points;
+};
+
+const drawStyledPoint = (
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  cx: number,
+  cy: number,
+  boxSize: number,
+  pointStyle: string
+) => {
+  if (pointStyle === 'square') {
+    ctx.rect(x0, y0, boxSize, boxSize);
+    ctx.fill();
+  } else if (pointStyle === 'circle') {
+    ctx.arc(cx, cy, (boxSize / 2) * 0.94, 0, 2 * Math.PI);
+    ctx.fill();
+  } else if (pointStyle === 'heart') {
+    const w = boxSize;
+    const h = boxSize;
+    const topCleftY = y0 + h * 0.25;
+    const bottomY = y0 + h * 0.95;
+    const leftPeakX = x0 + w * 0.18;
+    const leftPeakY = y0 + h * 0.08;
+    const rightPeakX = x0 + w * 0.82;
+    const rightPeakY = y0 + h * 0.08;
+    const leftX = x0 + w * 0.02;
+    const leftY = y0 + h * 0.42;
+    const rightX = x0 + w * 0.98;
+    const rightY = y0 + h * 0.42;
+
+    ctx.moveTo(cx, topCleftY);
+    ctx.bezierCurveTo(leftPeakX, leftPeakY - h * 0.05, leftX, leftY - h * 0.1, leftX, leftY);
+    ctx.bezierCurveTo(leftX, leftY + h * 0.25, x0 + w * 0.25, bottomY - h * 0.1, cx, bottomY);
+    ctx.bezierCurveTo(x0 + w * 0.75, bottomY - h * 0.1, rightX, rightY + h * 0.25, rightX, rightY);
+    ctx.bezierCurveTo(rightX, rightY - h * 0.1, rightPeakX, rightPeakY - h * 0.05, cx, topCleftY);
+    ctx.closePath();
+    ctx.fill();
+  } else if (pointStyle === 'liquid') {
+    const rMain = boxSize * 0.42;
+    ctx.arc(cx - boxSize * 0.04, cy + boxSize * 0.04, rMain, 0.25 * Math.PI, 1.25 * Math.PI);
+    ctx.lineTo(cx + boxSize * 0.38, cy - boxSize * 0.38);
+    ctx.closePath();
+    ctx.fill();
+  } else if (pointStyle === 'star') {
+    const rOuter = boxSize * 0.52;
+    const rInner = boxSize * 0.18;
+    ctx.moveTo(cx, cy - rOuter);
+    ctx.lineTo(cx + rInner, cy - rInner);
+    ctx.lineTo(cx + rOuter, cy);
+    ctx.lineTo(cx + rInner, cy + rInner);
+    ctx.lineTo(cx, cy + rOuter);
+    ctx.lineTo(cx - rInner, cy + rInner);
+    ctx.lineTo(cx - rOuter, cy);
+    ctx.lineTo(cx - rInner, cy - rInner);
+    ctx.closePath();
+    ctx.fill();
+  } else if (pointStyle === 'connected') {
+    ctx.arc(cx, cy, boxSize * 0.4, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+};
+
+const drawFakeFinder = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  fgColor: [number, number, number],
+  bgColor: [number, number, number],
+  bgMode: string
+) => {
+  const s7 = size;
+  const s5 = size * (5 / 7);
+  const s3 = size * (3 / 7);
+
+  // Outer ring
+  ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+  ctx.fillRect(x - s7 / 2, y - s7 / 2, s7, s7);
+
+  // Inner separator (using background color)
+  ctx.fillStyle = bgMode === 'transparent' ? '#ffffff' : `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
+  ctx.fillRect(x - s5 / 2, y - s5 / 2, s5, s5);
+
+  // Inner solid core
+  ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+  ctx.fillRect(x - s3 / 2, y - s3 / 2, s3, s3);
 };
 
 interface QRStudioProps {
@@ -144,7 +195,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
   // Configs
   const [text, setText] = useState('https://github.com/HonoravelMacho/qrcodando');
   const [pointStyle, setPointStyle] = useState<'square' | 'circle' | 'heart' | 'star' | 'connected' | 'liquid'>('circle');
-  const [qrShape, setQrShape] = useState<'square' | 'circle' | 'heart' | 'blood'>('square');
+  const [qrShape, setQrShape] = useState<'square' | 'circle' | 'heart'>('square');
   const [drawOutline, setDrawOutline] = useState<boolean>(true);
   const [outlineWidth, setOutlineWidth] = useState<number>(6);
   const [fgColor, setFgColor] = useState<[number, number, number]>([15, 23, 42]); // #0F172A (slate-900) - Dark foreground
@@ -242,17 +293,15 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
       const borderPx = borderModules * (width / (N + 2 * borderModules));
       const boxSize = (width - 2 * borderPx) / N;
 
-      // Prepare overall shape path
+      // Prepare overall shape points
       const qrSize = width - 2 * borderPx;
       const centerX = width / 2;
       const centerY = height / 2;
-      let shapePath: Path2D | null = null;
+      let shapePoints: [number, number][] = [];
       if (qrShape === 'circle') {
-        shapePath = getCirclePath(centerX, centerY, qrSize);
+        shapePoints = getCirclePoints(centerX, centerY, qrSize);
       } else if (qrShape === 'heart') {
-        shapePath = getHeartPath(centerX, centerY, qrSize);
-      } else if (qrShape === 'blood') {
-        shapePath = getBloodDropletPath(centerX, centerY, qrSize);
+        shapePoints = getHeartPoints(centerX, centerY, qrSize);
       }
 
       // Prepare logo analyzer if we have a logo
@@ -291,200 +340,325 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
       let modulesTotal = 0;
       let modulesSkipped = 0;
 
-      // Draw modules
-      ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+      if (qrShape === 'heart') {
+        // --- HIGH-PRECISION DUAL-STRUCTURE HEART SHAPE DESIGN ---
+        // S is the side of the rotated square core (diamond)
+        const S = qrSize * 0.44;
+        const sBoxSize = S / N;
+        const sStart = -S / 2;
 
-      for (let r = 0; r < N; r++) {
-        for (let c = 0; c < N; c++) {
-          const isActive = qr.modules.get(r, c) === 1;
-          if (!isActive) continue;
+        // Radii and positions of the lobes
+        const R = S / 2;
+        const leftLobeX = centerX - S / 2;
+        const rightLobeX = centerX + S / 2;
+        const lobeY = centerY - S / 2;
 
-          modulesTotal++;
+        // 1. Draw the decorative lobes (straight/aligned) with clipping to match lobe curves
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(leftLobeX, lobeY, R, 0, 2 * Math.PI);
+        ctx.arc(rightLobeX, lobeY, R, 0, 2 * Math.PI);
+        ctx.clip();
 
-          // Coordinates
-          const x0 = borderPx + c * boxSize;
-          const y0 = borderPx + r * boxSize;
-          const x1 = x0 + boxSize;
-          const y1 = y0 + boxSize;
-          const cx = (x0 + x1) / 2;
-          const cy = (y0 + y1) / 2;
+        // Draw elegant fake finder patterns at the centers of the lobes (clipped by the circular curve)
+        drawFakeFinder(ctx, leftLobeX, lobeY, sBoxSize * 7, fgColor, bgColor, bgMode);
+        drawFakeFinder(ctx, rightLobeX, lobeY, sBoxSize * 7, fgColor, bgColor, bgMode);
 
-          // --- Collision dodge algorithm ---
-          if (logoImg && logoAlphaData) {
-            // Check if center of module lies inside the logo bounding box
-            if (cx >= logoX && cx <= logoX + logoWidth && cy >= logoY && cy <= logoY + logoHeight) {
-              const localX = Math.floor(cx - logoX);
-              const localY = Math.floor(cy - logoY);
-
-              const checkWidth = Math.ceil(logoWidth);
-              const checkHeight = Math.ceil(logoHeight);
-
-              // Analyze neighborhood around (localX, localY) based on padding
-              const padPx = Math.ceil(boxSize * paddingRatio);
-              let isColliding = false;
-
-              for (let dy = -padPx; dy <= padPx; dy++) {
-                for (let dx = -padPx; dx <= padPx; dx++) {
-                  const tx = localX + dx;
-                  const ty = localY + dy;
-                  if (tx >= 0 && tx < checkWidth && ty >= 0 && ty < checkHeight) {
-                    const alphaIdx = ty * checkWidth + tx;
-                    if (logoAlphaData[alphaIdx] > 40) { // Threshold for collision
-                      isColliding = true;
-                      break;
-                    }
-                  }
-                }
-                if (isColliding) break;
-              }
-
-              if (isColliding) {
-                modulesSkipped++;
-                continue; // Skip drawing to allow organic dodge!
-              }
+        // Draw beautiful grid of fake decorative modules inside the lobes
+        for (let lx = leftLobeX - R; lx <= rightLobeX + R; lx += sBoxSize) {
+          for (let ly = lobeY - R; ly <= lobeY + R; ly += sBoxSize) {
+            // Avoid overlapping the fake finder patterns
+            const distToLeftFinder = Math.sqrt((lx - leftLobeX) ** 2 + (ly - lobeY) ** 2);
+            const distToRightFinder = Math.sqrt((lx - rightLobeX) ** 2 + (ly - lobeY) ** 2);
+            if (distToLeftFinder < sBoxSize * 4.5 || distToRightFinder < sBoxSize * 4.5) {
+              continue;
             }
-          }
 
-          // Finder patterns should remain solid squares for robust scanning
-          const isFinder = (
-            (r < 8 && c < 8) ||
-            (r < 8 && c >= N - 8) ||
-            (r >= N - 8 && c < 8)
-          );
-
-          // If a custom overall shape silhouette is selected, filter out non-finder modules falling outside of it
-          if (shapePath && !isFinder) {
-            if (!ctx.isPointInPath(shapePath, cx, cy)) {
-              continue; // Skip this module!
+            // Avoid overlapping the central rotated QR code (plus a tiny safety gap)
+            const rx = lx - centerX;
+            const ry = ly - centerY;
+            const cos = Math.cos(-Math.PI / 4);
+            const sin = Math.sin(-Math.PI / 4);
+            const rotX = rx * cos - ry * sin;
+            const rotY = rx * sin + ry * cos;
+            if (Math.abs(rotX) <= S / 2 + sBoxSize * 0.45 && Math.abs(rotY) <= S / 2 + sBoxSize * 0.45) {
+              continue;
             }
-          }
 
-          // Alignment patterns should also remain solid squares for robust scanning
-          const isAlignmentPattern = (() => {
-            const version = Math.round((N - 17) / 4);
-            const coords = ALIGNMENT_PATTERNS[version];
-            if (!coords) return false;
-
-            for (const rCenter of coords) {
-              for (const cCenter of coords) {
-                // Skip if center overlaps with finder patterns
-                const isOverlappingFinder = 
-                  (rCenter < 8 && cCenter < 8) ||
-                  (rCenter < 8 && cCenter >= N - 8) ||
-                  (rCenter >= N - 8 && cCenter < 8);
-                
-                if (isOverlappingFinder) continue;
-
-                // Check if current (r, c) is inside the 5x5 alignment pattern centered at (rCenter, cCenter)
-                if (Math.abs(r - rCenter) <= 2 && Math.abs(c - cCenter) <= 2) {
-                  return true;
-                }
-              }
-            }
-            return false;
-          })();
-
-          if (isFinder || isAlignmentPattern) {
-            // Classic full square finder / alignment pattern (drawn with slight overlap to prevent anti-aliasing gaps)
-            ctx.fillRect(x0 - 0.15, y0 - 0.15, boxSize + 0.3, boxSize + 0.3);
-          } else {
-            // Draw styled custom point
-            ctx.beginPath();
-            if (pointStyle === 'square') {
-              ctx.rect(x0, y0, boxSize, boxSize);
-              ctx.fill();
-            } else if (pointStyle === 'circle') {
-              ctx.arc(cx, cy, (boxSize / 2) * 0.94, 0, 2 * Math.PI);
-              ctx.fill();
-            } else if (pointStyle === 'heart') {
-              // Upgraded highly scannable, well-proportioned vector heart shape
-              const w = boxSize;
-              const h = boxSize;
-              const topCleftY = y0 + h * 0.25;
-              const bottomY = y0 + h * 0.95;
-              const leftPeakX = x0 + w * 0.18;
-              const leftPeakY = y0 + h * 0.08;
-              const rightPeakX = x0 + w * 0.82;
-              const rightPeakY = y0 + h * 0.08;
-              const leftX = x0 + w * 0.02;
-              const leftY = y0 + h * 0.42;
-              const rightX = x0 + w * 0.98;
-              const rightY = y0 + h * 0.42;
-
-              ctx.moveTo(cx, topCleftY);
-              // Left lobe curve
-              ctx.bezierCurveTo(leftPeakX, leftPeakY - h*0.05, leftX, leftY - h*0.1, leftX, leftY);
-              // Left-to-bottom curve
-              ctx.bezierCurveTo(leftX, leftY + h*0.25, x0 + w * 0.25, bottomY - h*0.1, cx, bottomY);
-              // Bottom-to-right curve
-              ctx.bezierCurveTo(x0 + w * 0.75, bottomY - h*0.1, rightX, rightY + h*0.25, rightX, rightY);
-              // Right lobe curve
-              ctx.bezierCurveTo(rightX, rightY - h*0.1, rightPeakX, rightPeakY - h*0.05, cx, topCleftY);
-              ctx.closePath();
-              ctx.fill();
-            } else if (pointStyle === 'liquid') {
-              // Organic fluid droplet shape (teardrop pointing up-right with tiny splash satellites)
-              const rMain = boxSize * 0.44;
-              
-              // Draw main teardrop bulb
-              ctx.arc(cx - boxSize * 0.05, cy + boxSize * 0.05, rMain, 0.25 * Math.PI, 1.25 * Math.PI);
-              // Draw top-right tapered tip
-              ctx.lineTo(cx + boxSize * 0.35, cy - boxSize * 0.35);
-              ctx.closePath();
-              ctx.fill();
-
-              // Draw a tiny secondary splash droplet separate from the main one
+            // Pseudo-random stable hash for decorative module placement to match QR texture
+            const hash = Math.sin(lx * 12.9898 + ly * 78.233) * 43758.5453;
+            const rand = hash - Math.floor(hash);
+            if (rand > 0.46) {
+              ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
               ctx.beginPath();
-              ctx.arc(cx + boxSize * 0.32, cy - boxSize * 0.32, boxSize * 0.11, 0, 2 * Math.PI);
-              ctx.fill();
-
-              // Draw a tiny secondary ripple drop on the other side
-              ctx.beginPath();
-              ctx.arc(cx - boxSize * 0.35, cy + boxSize * 0.35, boxSize * 0.07, 0, 2 * Math.PI);
-              ctx.fill();
-            } else if (pointStyle === 'star') {
-              // Elegant 4-pointed star
-              const rOuter = boxSize * 0.52;
-              const rInner = boxSize * 0.18;
-              ctx.moveTo(cx, cy - rOuter);
-              ctx.lineTo(cx + rInner, cy - rInner);
-              ctx.lineTo(cx + rOuter, cy);
-              ctx.lineTo(cx + rInner, cy + rInner);
-              ctx.lineTo(cx, cy + rOuter);
-              ctx.lineTo(cx - rInner, cy + rInner);
-              ctx.lineTo(cx - rOuter, cy);
-              ctx.lineTo(cx - rInner, cy - rInner);
-              ctx.closePath();
-              ctx.fill();
-            } else if (pointStyle === 'connected') {
-              // Check adjacent modules to draw continuous lines
-              const hasUp = r > 0 && qr.modules.get(r - 1, c) === 1;
-              const hasDown = r < N - 1 && qr.modules.get(r + 1, c) === 1;
-              const hasLeft = c > 0 && qr.modules.get(r, c - 1) === 1;
-              const hasRight = c < N - 1 && qr.modules.get(r, c + 1) === 1;
-
-              // Draw circular center
-              ctx.arc(cx, cy, boxSize * 0.4, 0, 2 * Math.PI);
-              ctx.fill();
-
-              // Draw bridges to neighbors
-              if (hasUp) ctx.fillRect(cx - boxSize*0.28, y0, boxSize*0.56, boxSize*0.5);
-              if (hasDown) ctx.fillRect(cx - boxSize*0.28, cy, boxSize*0.56, boxSize*0.5);
-              if (hasLeft) ctx.fillRect(x0, cy - boxSize*0.28, boxSize*0.5, boxSize*0.56);
-              if (hasRight) ctx.fillRect(cx, cy - boxSize*0.28, boxSize*0.5, boxSize*0.56);
+              const cx = lx;
+              const cy = ly;
+              const x0 = lx - sBoxSize / 2;
+              const y0 = ly - sBoxSize / 2;
+              drawStyledPoint(ctx, x0, y0, cx, cy, sBoxSize, pointStyle);
             }
           }
         }
-      }
+        ctx.restore();
 
-      // Draw shape outline if requested
-      if (qrShape !== 'square' && drawOutline && shapePath) {
-        ctx.beginPath();
-        ctx.strokeStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
-        ctx.lineWidth = outlineWidth;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke(shapePath);
+        // 2. Draw the real QR Code rotated 45 degrees centered at (centerX, centerY)
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(Math.PI / 4);
+
+        for (let r = 0; r < N; r++) {
+          for (let c = 0; c < N; c++) {
+            const isActive = qr.modules.get(r, c) === 1;
+            if (!isActive) continue;
+
+            modulesTotal++;
+
+            const x0 = sStart + c * sBoxSize;
+            const y0 = sStart + r * sBoxSize;
+            const x1 = x0 + sBoxSize;
+            const y1 = y0 + sBoxSize;
+            const cx = (x0 + x1) / 2;
+            const cy = (y0 + y1) / 2;
+
+            // Screen-space position for logo collisions
+            const cosVal = Math.cos(Math.PI / 4);
+            const sinVal = Math.sin(Math.PI / 4);
+            const screenX = centerX + (cx * cosVal - cy * sinVal);
+            const screenY = centerY + (cx * sinVal + cy * cosVal);
+
+            if (logoImg && logoAlphaData) {
+              if (screenX >= logoX && screenX <= logoX + logoWidth && screenY >= logoY && screenY <= logoY + logoHeight) {
+                const localX = Math.floor(screenX - logoX);
+                const localY = Math.floor(screenY - logoY);
+
+                const checkWidth = Math.ceil(logoWidth);
+                const checkHeight = Math.ceil(logoHeight);
+
+                const padPx = Math.ceil(sBoxSize * paddingRatio);
+                let isColliding = false;
+
+                for (let dy = -padPx; dy <= padPx; dy++) {
+                  for (let dx = -padPx; dx <= padPx; dx++) {
+                    const tx = localX + dx;
+                    const ty = localY + dy;
+                    if (tx >= 0 && tx < checkWidth && ty >= 0 && ty < checkHeight) {
+                      const alphaIdx = ty * checkWidth + tx;
+                      if (logoAlphaData[alphaIdx] > 40) {
+                        isColliding = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (isColliding) break;
+                }
+
+                if (isColliding) {
+                  modulesSkipped++;
+                  continue;
+                }
+              }
+            }
+
+            const isFinder = (
+              (r < 8 && c < 8) ||
+              (r < 8 && c >= N - 8) ||
+              (r >= N - 8 && c < 8)
+            );
+
+            const isAlignmentPattern = (() => {
+              const version = Math.round((N - 17) / 4);
+              const coords = ALIGNMENT_PATTERNS[version];
+              if (!coords) return false;
+
+              for (const rCenter of coords) {
+                for (const cCenter of coords) {
+                  const isOverlappingFinder = 
+                    (rCenter < 8 && cCenter < 8) ||
+                    (rCenter < 8 && cCenter >= N - 8) ||
+                    (rCenter >= N - 8 && cCenter < 8);
+                  
+                  if (isOverlappingFinder) continue;
+
+                  if (Math.abs(r - rCenter) <= 2 && Math.abs(c - cCenter) <= 2) {
+                    return true;
+                  }
+                }
+              }
+              return false;
+            })();
+
+            ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+            if (isFinder || isAlignmentPattern) {
+              ctx.fillRect(x0 - 0.15, y0 - 0.15, sBoxSize + 0.3, sBoxSize + 0.3);
+            } else {
+              ctx.beginPath();
+              drawStyledPoint(ctx, x0, y0, cx, cy, sBoxSize, pointStyle);
+            }
+          }
+        }
+        ctx.restore();
+
+        // 3. Draw the overall heart outline if requested
+        if (drawOutline) {
+          ctx.beginPath();
+          ctx.arc(leftLobeX, lobeY, R, 0, Math.PI * 1.12, true);
+          ctx.lineTo(centerX, centerY + S * 0.707);
+          const targetX = rightLobeX + R * Math.cos(Math.PI * 1.88);
+          const targetY = lobeY + R * Math.sin(Math.PI * 1.88);
+          ctx.lineTo(targetX, targetY);
+          ctx.arc(rightLobeX, lobeY, R, Math.PI * 1.88, Math.PI, true);
+          ctx.closePath();
+
+          ctx.strokeStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+          ctx.lineWidth = outlineWidth;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+        }
+
+      } else {
+        // Standard (Square/Circle) shape drawing logic
+        ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+
+        for (let r = 0; r < N; r++) {
+          for (let c = 0; c < N; c++) {
+            const isActive = qr.modules.get(r, c) === 1;
+            if (!isActive) continue;
+
+            modulesTotal++;
+
+            // Coordinates
+            const x0 = borderPx + c * boxSize;
+            const y0 = borderPx + r * boxSize;
+            const x1 = x0 + boxSize;
+            const y1 = y0 + boxSize;
+            const cx = (x0 + x1) / 2;
+            const cy = (y0 + y1) / 2;
+
+            // --- Collision dodge algorithm ---
+            if (logoImg && logoAlphaData) {
+              // Check if center of module lies inside the logo bounding box
+              if (cx >= logoX && cx <= logoX + logoWidth && cy >= logoY && cy <= logoY + logoHeight) {
+                const localX = Math.floor(cx - logoX);
+                const localY = Math.floor(cy - logoY);
+
+                const checkWidth = Math.ceil(logoWidth);
+                const checkHeight = Math.ceil(logoHeight);
+
+                // Analyze neighborhood around (localX, localY) based on padding
+                const padPx = Math.ceil(boxSize * paddingRatio);
+                let isColliding = false;
+
+                for (let dy = -padPx; dy <= padPx; dy++) {
+                  for (let dx = -padPx; dx <= padPx; dx++) {
+                    const tx = localX + dx;
+                    const ty = localY + dy;
+                    if (tx >= 0 && tx < checkWidth && ty >= 0 && ty < checkHeight) {
+                      const alphaIdx = ty * checkWidth + tx;
+                      if (logoAlphaData[alphaIdx] > 40) { // Threshold for collision
+                        isColliding = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (isColliding) break;
+                }
+
+                if (isColliding) {
+                  modulesSkipped++;
+                  continue; // Skip drawing to allow organic dodge!
+                }
+              }
+            }
+
+            // Finder patterns should remain solid squares for robust scanning
+            const isFinder = (
+              (r < 8 && c < 8) ||
+              (r < 8 && c >= N - 8) ||
+              (r >= N - 8 && c < 8)
+            );
+
+            // Alignment patterns should also remain solid squares for robust scanning
+            const isAlignmentPattern = (() => {
+              const version = Math.round((N - 17) / 4);
+              const coords = ALIGNMENT_PATTERNS[version];
+              if (!coords) return false;
+
+              for (const rCenter of coords) {
+                for (const cCenter of coords) {
+                  // Skip if center overlaps with finder patterns
+                  const isOverlappingFinder = 
+                    (rCenter < 8 && cCenter < 8) ||
+                    (rCenter < 8 && cCenter >= N - 8) ||
+                    (rCenter >= N - 8 && cCenter < 8);
+                  
+                  if (isOverlappingFinder) continue;
+
+                  // Check if current (r, c) is inside the 5x5 alignment pattern centered at (rCenter, cCenter)
+                  if (Math.abs(r - rCenter) <= 2 && Math.abs(c - cCenter) <= 2) {
+                    return true;
+                  }
+                }
+              }
+              return false;
+            })();
+
+            // Format info modules immediately surrounding finder patterns are vital for decoding
+            const isFormatInfo = (
+              (r < 9 && c < 9) ||
+              (r < 9 && c >= N - 9) ||
+              (r >= N - 9 && c < 9)
+            );
+
+            // Standard timing patterns connect the finder patterns and are critical for scanner clocking
+            const isTimingPattern = r === 6 || c === 6;
+
+            const isCriticalModule = isFinder || isAlignmentPattern || isFormatInfo || isTimingPattern;
+
+            // If a custom overall shape silhouette is selected, filter out non-critical modules falling outside of it
+            let isOutside = false;
+            if (qrShape !== 'square' && !isCriticalModule && shapePoints.length > 0) {
+              if (!isPointInPolygon(cx, cy, shapePoints)) {
+                isOutside = true;
+              }
+            }
+
+            if (isOutside) {
+              modulesSkipped++;
+              // To ensure the QR code is 100% scannable while keeping the gorgeous heart shape silhouette,
+              // we render non-critical modules outside the silhouette as delicate micro-dots.
+              // This preserves the full QR matrix data without disrupting the visual silhouette of the heart!
+              ctx.beginPath();
+              ctx.arc(cx, cy, boxSize * 0.14, 0, 2 * Math.PI);
+              ctx.fill();
+              continue;
+            }
+
+            if (isFinder || isAlignmentPattern) {
+              // Classic full square finder / alignment pattern (drawn with slight overlap to prevent anti-aliasing gaps)
+              ctx.fillRect(x0 - 0.15, y0 - 0.15, boxSize + 0.3, boxSize + 0.3);
+            } else {
+              // Draw styled custom point
+              ctx.beginPath();
+              drawStyledPoint(ctx, x0, y0, cx, cy, boxSize, pointStyle);
+            }
+          }
+        }
+
+        // Draw shape outline if requested
+        if (qrShape !== 'square' && drawOutline && shapePoints.length > 0) {
+          ctx.beginPath();
+          ctx.moveTo(shapePoints[0][0], shapePoints[0][1]);
+          for (let i = 1; i < shapePoints.length; i++) {
+            ctx.lineTo(shapePoints[i][0], shapePoints[i][1]);
+          }
+          ctx.closePath();
+          ctx.strokeStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+          ctx.lineWidth = outlineWidth;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+        }
       }
 
       // Calculate skipped data modules pct
@@ -542,14 +716,6 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
     document.body.removeChild(a);
   };
 
-  // Helper for preset configurations
-  const applyPreset = (presetText: string, style: typeof pointStyle, fg: [number, number, number], bg: [number, number, number]) => {
-    setText(presetText);
-    setPointStyle(style);
-    setFgColor(fg);
-    setBgColor(bg);
-  };
-
   return (
     <div id="qr-studio-container" className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       
@@ -578,28 +744,6 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
           />
         </div>
 
-        {/* Presets Row */}
-        <div className="flex flex-wrap gap-2">
-          <span className="text-xs text-[#64748b] self-center">Presets de teste:</span>
-          <button
-            onClick={() => applyPreset('https://github.com/HonoravelMacho/qrcodando', 'circle', [30, 58, 138], [255, 255, 255])}
-            className="text-xs bg-[#0f172a] hover:bg-white/5 text-[#94a3b8] hover:text-[#f1f5f9] px-3 py-1.5 rounded-lg border border-[#334155] transition-colors"
-          >
-            GitHub Repo
-          </button>
-          <button
-            onClick={() => applyPreset('Tiago Rabelo Sels', 'heart', [153, 27, 27], [254, 242, 242])}
-            className="text-xs bg-[#0f172a] hover:bg-white/5 text-[#94a3b8] hover:text-[#f1f5f9] px-3 py-1.5 rounded-lg border border-[#334155] transition-colors"
-          >
-            Portfólio Tiago
-          </button>
-          <button
-            onClick={() => applyPreset('WIFI:S:Qrcodando_Network;T:WPA;P:Apache2License;;', 'star', [6, 95, 70], [240, 253, 250])}
-            className="text-xs bg-[#0f172a] hover:bg-white/5 text-[#94a3b8] hover:text-[#f1f5f9] px-3 py-1.5 rounded-lg border border-[#334155] transition-colors"
-          >
-            Config Wifi
-          </button>
-        </div>
 
         <hr className="border-[#334155]" />
 
@@ -643,12 +787,11 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
           <p className="text-[11px] text-[#94a3b8] mb-3">
             Escolha uma máscara externa para recortar o QR Code em formas especiais.
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {[
               { id: 'square', label: 'Quadrado', icon: <Square className="w-4 h-4" /> },
               { id: 'circle', label: 'Círculo', icon: <Circle className="w-4 h-4" /> },
-              { id: 'heart', label: 'Coração', icon: <Heart className="w-4 h-4" /> },
-              { id: 'blood', label: 'Gota Sangue', icon: <Droplets className="w-4 h-4 text-rose-500" /> }
+              { id: 'heart', label: 'Coração', icon: <Heart className="w-4 h-4 text-red-500" /> }
             ].map((shape) => (
               <button
                 key={shape.id}
@@ -667,11 +810,11 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
 
           {/* Sub-config for borders (shown when shape !== square) */}
           {qrShape !== 'square' && (
-            <div className="mt-4 bg-[#0f172a] border border-[#334155] rounded-xl p-4 flex flex-col gap-4">
+            <div className="mt-4 bg-[#0f172a] border border-dashed border-[#334155] rounded-xl p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="text-xs text-white font-semibold">Desenhar Contorno da Forma</span>
-                  <span className="text-[10px] text-[#64748b]">Exibe traços de alta definição delimitando a forma</span>
+                  <span className="text-xs text-white font-semibold">Desenhar Borda (Contorno Externo)</span>
+                  <span className="text-[10px] text-[#94a3b8]">Ative para destacar a silhueta ou desative para remover a borda completamente</span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -750,7 +893,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
           {/* Logo Collision and Padding Configurations */}
           <div className="flex flex-col gap-4">
             <span className="text-xs font-semibold text-[#64748b] uppercase tracking-widest">Invasão de Logo Orgânica</span>
-            
+
             {/* Real upload file block */}
             <div className="border border-[#334155] bg-[#0f172a] rounded-xl p-4 flex flex-col gap-3">
               <div className="flex items-center gap-2">
