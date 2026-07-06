@@ -2,22 +2,12 @@ import { useState } from 'react';
 import { 
   QrCode, 
   Sparkles, 
-  BookOpen, 
-  Settings, 
   Heart, 
-  Info, 
   Github, 
-  Terminal, 
-  Code2, 
-  HelpCircle,
-  Award
 } from 'lucide-react';
 import QRStudio from './components/QRStudio';
-import CodeExplorer from './components/CodeExplorer';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'explorer'>('studio');
-  
   // Real-time telemetry values mirrored from the Active Studio to render in the system status bar
   const [telemetry, setTelemetry] = useState({
     style: 'circle',
@@ -127,41 +117,11 @@ export default function App() {
               O <strong>Qrcodando</strong> revoluciona a escaneabilidade ao fundir geometrias artísticas customizadas com contorno e desvio automático de logotipos (Collision Dodge) usando canais de transparência, tudo operando sob o nível Reed-Solomon H (30%) de correção matemática.
             </p>
           </div>
-
-          {/* Navigation Tab Selectors */}
-          <div className="flex bg-[#0f172a] p-1.5 rounded-2xl border border-[#334155] shrink-0 self-start md:self-center">
-            <button
-              onClick={() => setActiveTab('studio')}
-              className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all ${
-                activeTab === 'studio'
-                  ? 'bg-[#38bdf8] text-[#0f172a] shadow-lg shadow-[#38bdf8]/20'
-                  : 'text-[#94a3b8] hover:text-[#f1f5f9]'
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              QR Studio Live
-            </button>
-            <button
-              onClick={() => setActiveTab('explorer')}
-              className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all ${
-                activeTab === 'explorer'
-                  ? 'bg-[#38bdf8] text-[#0f172a] shadow-lg shadow-[#38bdf8]/20'
-                  : 'text-[#94a3b8] hover:text-[#f1f5f9]'
-              }`}
-            >
-              <Code2 className="w-4 h-4" />
-              Código Python
-            </button>
-          </div>
         </div>
 
         {/* ACTIVE TAB COMPONENT CONTAINER */}
         <div className="transition-all duration-300">
-          {activeTab === 'studio' ? (
-            <QRStudio onStyleUpdate={handleStyleTelemetry} />
-          ) : (
-            <CodeExplorer />
-          )}
+          <QRStudio onStyleUpdate={handleStyleTelemetry} />
         </div>
 
       </main>

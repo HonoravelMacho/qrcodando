@@ -110,7 +110,15 @@ const drawStyledPoint = (
   pointStyle: string
 ) => {
   if (pointStyle === 'square') {
-    ctx.rect(x0, y0, boxSize, boxSize);
+    const drawSize = boxSize * 0.88;
+    const dx = (boxSize - drawSize) / 2;
+    const rx = x0 + dx;
+    const ry = y0 + dx;
+    if (ctx.roundRect) {
+      ctx.roundRect(rx, ry, drawSize, drawSize, drawSize * 0.22);
+    } else {
+      ctx.rect(rx, ry, drawSize, drawSize);
+    }
     ctx.fill();
   } else if (pointStyle === 'circle') {
     ctx.arc(cx, cy, (boxSize / 2) * 0.94, 0, 2 * Math.PI);
@@ -347,11 +355,11 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         const sBoxSize = S / N;
         const sStart = -S / 2;
 
-        // Radii and positions of the lobes
+        // Radii and positions of the lobes (mathematically perfect tangent heart)
         const R = S / 2;
-        const leftLobeX = centerX - S / 2;
-        const rightLobeX = centerX + S / 2;
-        const lobeY = centerY - S / 2;
+        const leftLobeX = centerX - S * 0.35355;
+        const rightLobeX = centerX + S * 0.35355;
+        const lobeY = centerY - S * 0.35355;
 
         // 1. Draw the decorative lobes (straight/aligned) with clipping to match lobe curves
         ctx.save();
@@ -360,28 +368,18 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         ctx.arc(rightLobeX, lobeY, R, 0, 2 * Math.PI);
         ctx.clip();
 
-        // Draw elegant fake finder patterns at the centers of the lobes (clipped by the circular curve)
-        drawFakeFinder(ctx, leftLobeX, lobeY, sBoxSize * 7, fgColor, bgColor, bgMode);
-        drawFakeFinder(ctx, rightLobeX, lobeY, sBoxSize * 7, fgColor, bgColor, bgMode);
-
-        // Draw beautiful grid of fake decorative modules inside the lobes
+        // Draw beautiful grid of fake decorative modules inside the lobes (uniformly styled)
         for (let lx = leftLobeX - R; lx <= rightLobeX + R; lx += sBoxSize) {
           for (let ly = lobeY - R; ly <= lobeY + R; ly += sBoxSize) {
-            // Avoid overlapping the fake finder patterns
-            const distToLeftFinder = Math.sqrt((lx - leftLobeX) ** 2 + (ly - lobeY) ** 2);
-            const distToRightFinder = Math.sqrt((lx - rightLobeX) ** 2 + (ly - lobeY) ** 2);
-            if (distToLeftFinder < sBoxSize * 4.5 || distToRightFinder < sBoxSize * 4.5) {
-              continue;
-            }
-
-            // Avoid overlapping the central rotated QR code (plus a tiny safety gap)
+            // Avoid overlapping the central rotated QR code (plus a safe quiet zone gap to prevent module merging)
             const rx = lx - centerX;
             const ry = ly - centerY;
             const cos = Math.cos(-Math.PI / 4);
             const sin = Math.sin(-Math.PI / 4);
             const rotX = rx * cos - ry * sin;
             const rotY = rx * sin + ry * cos;
-            if (Math.abs(rotX) <= S / 2 + sBoxSize * 0.45 && Math.abs(rotY) <= S / 2 + sBoxSize * 0.45) {
+            const gapFactor = pointStyle === 'square' ? 0.75 : 0.45;
+            if (Math.abs(rotX) <= S / 2 + sBoxSize * gapFactor && Math.abs(rotY) <= S / 2 + sBoxSize * gapFactor) {
               continue;
             }
 
@@ -393,9 +391,11 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               ctx.beginPath();
               const cx = lx;
               const cy = ly;
-              const x0 = lx - sBoxSize / 2;
-              const y0 = ly - sBoxSize / 2;
-              drawStyledPoint(ctx, x0, y0, cx, cy, sBoxSize, pointStyle);
+              // Use perfect sizing for a dense, highly professional grid texture with clean gaps
+              const sizeToDraw = sBoxSize;
+              const x0 = lx - sizeToDraw / 2;
+              const y0 = ly - sizeToDraw / 2;
+              drawStyledPoint(ctx, x0, y0, cx, cy, sizeToDraw, pointStyle);
             }
           }
         }
@@ -498,15 +498,171 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         }
         ctx.restore();
 
-        // 3. Draw the overall heart outline if requested
+        // 3. Draw the overall heart outline if requested (restoring the previous perfect mathematical contour)
         if (drawOutline) {
           ctx.beginPath();
-          ctx.arc(leftLobeX, lobeY, R, 0, Math.PI * 1.12, true);
-          ctx.lineTo(centerX, centerY + S * 0.707);
-          const targetX = rightLobeX + R * Math.cos(Math.PI * 1.88);
-          const targetY = lobeY + R * Math.sin(Math.PI * 1.88);
-          ctx.lineTo(targetX, targetY);
-          ctx.arc(rightLobeX, lobeY, R, Math.PI * 1.88, Math.PI, true);
+          // We add a uniform 4.5px safety margin around the QR code's boundary to protect formatting and timing patterns
+          const margin = 4.5;
+          const S_out = S + margin * Math.sqrt(2);
+          const R_out = S_out / 2;
+          const leftLobeX_out = centerX - S_out * 0.35355;
+          const rightLobeX_out = centerX + S_out * 0.35355;
+          const lobeY_out = centerY - S_out * 0.35355;
+
+          // Arc around left lobe: from cleft (angle -Math.PI / 4) to left corner (3 * Math.PI / 4)
+          ctx.arc(leftLobeX_out, lobeY_out, R_out, -Math.PI / 4, 3 * Math.PI / 4, true);
+          // Line straight to the bottom tip
+          ctx.lineTo(centerX, centerY + S_out * 0.70715);
+          // Line straight to the right corner
+          ctx.lineTo(centerX + S_out * 0.70715, centerY);
+          // Arc around right lobe: from right corner (Math.PI / 4) to cleft (5 * Math.PI / 4)
+          ctx.arc(rightLobeX_out, lobeY_out, R_out, Math.PI / 4, 5 * Math.PI / 4, true);
+          ctx.closePath();
+
+          ctx.strokeStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+          ctx.lineWidth = outlineWidth;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+        }
+
+      } else if (qrShape === 'circle') {
+        // --- HIGH-PRECISION DUAL-STRUCTURE CIRCLE DESIGN ---
+        const R = qrSize * 0.5;
+        const S = qrSize * 0.68;
+        const sBoxSize = S / N;
+        const sStart = -S / 2;
+
+        // Draw beautiful grid of fake decorative modules inside the circle (but outside the real QR square)
+        for (let lx = centerX - R; lx <= centerX + R; lx += sBoxSize) {
+          for (let ly = centerY - R; ly <= centerY + R; ly += sBoxSize) {
+            const distToCenter = Math.sqrt((lx - centerX) ** 2 + (ly - centerY) ** 2);
+            // Inside the circle?
+            if (distToCenter > R * 0.98) {
+              continue;
+            }
+
+            // Avoid overlapping the central QR code (plus a safe quiet zone gap to prevent module merging)
+            const gapFactor = pointStyle === 'square' ? 0.75 : 0.45;
+            if (Math.abs(lx - centerX) <= S / 2 + sBoxSize * gapFactor && Math.abs(ly - centerY) <= S / 2 + sBoxSize * gapFactor) {
+              continue;
+            }
+
+            // Pseudo-random stable hash for decorative module placement to match QR texture
+            const hash = Math.sin(lx * 12.9898 + ly * 78.233) * 43758.5453;
+            const rand = hash - Math.floor(hash);
+            if (rand > 0.46) {
+              ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+              ctx.beginPath();
+              const cx = lx;
+              const cy = ly;
+              // Use perfect sizing for a dense, highly professional grid texture with clean gaps
+              const sizeToDraw = sBoxSize;
+              const x0 = lx - sizeToDraw / 2;
+              const y0 = ly - sizeToDraw / 2;
+              drawStyledPoint(ctx, x0, y0, cx, cy, sizeToDraw, pointStyle);
+            }
+          }
+        }
+
+        // Draw the real QR Code centered at (centerX, centerY) - NO ROTATION
+        ctx.save();
+        ctx.translate(centerX, centerY);
+
+        for (let r = 0; r < N; r++) {
+          for (let c = 0; c < N; c++) {
+            const isActive = qr.modules.get(r, c) === 1;
+            if (!isActive) continue;
+
+            modulesTotal++;
+
+            const x0 = sStart + c * sBoxSize;
+            const y0 = sStart + r * sBoxSize;
+            const x1 = x0 + sBoxSize;
+            const y1 = y0 + sBoxSize;
+            const cx = (x0 + x1) / 2;
+            const cy = (y0 + y1) / 2;
+
+            // Screen-space position for logo collisions
+            const screenX = centerX + cx;
+            const screenY = centerY + cy;
+
+            if (logoImg && logoAlphaData) {
+              if (screenX >= logoX && screenX <= logoX + logoWidth && screenY >= logoY && screenY <= logoY + logoHeight) {
+                const localX = Math.floor(screenX - logoX);
+                const localY = Math.floor(screenY - logoY);
+
+                const checkWidth = Math.ceil(logoWidth);
+                const checkHeight = Math.ceil(logoHeight);
+
+                const padPx = Math.ceil(sBoxSize * paddingRatio);
+                let isColliding = false;
+
+                for (let dy = -padPx; dy <= padPx; dy++) {
+                  for (let dx = -padPx; dx <= padPx; dx++) {
+                    const tx = localX + dx;
+                    const ty = localY + dy;
+                    if (tx >= 0 && tx < checkWidth && ty >= 0 && ty < checkHeight) {
+                      const alphaIdx = ty * checkWidth + tx;
+                      if (logoAlphaData[alphaIdx] > 40) {
+                        isColliding = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (isColliding) break;
+                }
+
+                if (isColliding) {
+                  modulesSkipped++;
+                  continue;
+                }
+              }
+            }
+
+            const isFinder = (
+              (r < 8 && c < 8) ||
+              (r < 8 && c >= N - 8) ||
+              (r >= N - 8 && c < 8)
+            );
+
+            const isAlignmentPattern = (() => {
+              const version = Math.round((N - 17) / 4);
+              const coords = ALIGNMENT_PATTERNS[version];
+              if (!coords) return false;
+
+              for (const rCenter of coords) {
+                for (const cCenter of coords) {
+                  const isOverlappingFinder = 
+                    (rCenter < 8 && cCenter < 8) ||
+                    (rCenter < 8 && cCenter >= N - 8) ||
+                    (rCenter >= N - 8 && cCenter < 8);
+                  
+                  if (isOverlappingFinder) continue;
+
+                  if (Math.abs(r - rCenter) <= 2 && Math.abs(c - cCenter) <= 2) {
+                    return true;
+                  }
+                }
+              }
+              return false;
+            })();
+
+            ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+            if (isFinder || isAlignmentPattern) {
+              ctx.fillRect(x0 - 0.15, y0 - 0.15, sBoxSize + 0.3, sBoxSize + 0.3);
+            } else {
+              ctx.beginPath();
+              drawStyledPoint(ctx, x0, y0, cx, cy, sBoxSize, pointStyle);
+            }
+          }
+        }
+        ctx.restore();
+
+        // Draw the overall circle outline if requested
+        if (drawOutline) {
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, R, 0, 2 * Math.PI);
           ctx.closePath();
 
           ctx.strokeStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
@@ -517,7 +673,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         }
 
       } else {
-        // Standard (Square/Circle) shape drawing logic
+        // Standard Square shape drawing logic
         ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
 
         for (let r = 0; r < N; r++) {
@@ -603,37 +759,6 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               return false;
             })();
 
-            // Format info modules immediately surrounding finder patterns are vital for decoding
-            const isFormatInfo = (
-              (r < 9 && c < 9) ||
-              (r < 9 && c >= N - 9) ||
-              (r >= N - 9 && c < 9)
-            );
-
-            // Standard timing patterns connect the finder patterns and are critical for scanner clocking
-            const isTimingPattern = r === 6 || c === 6;
-
-            const isCriticalModule = isFinder || isAlignmentPattern || isFormatInfo || isTimingPattern;
-
-            // If a custom overall shape silhouette is selected, filter out non-critical modules falling outside of it
-            let isOutside = false;
-            if (qrShape !== 'square' && !isCriticalModule && shapePoints.length > 0) {
-              if (!isPointInPolygon(cx, cy, shapePoints)) {
-                isOutside = true;
-              }
-            }
-
-            if (isOutside) {
-              modulesSkipped++;
-              // To ensure the QR code is 100% scannable while keeping the gorgeous heart shape silhouette,
-              // we render non-critical modules outside the silhouette as delicate micro-dots.
-              // This preserves the full QR matrix data without disrupting the visual silhouette of the heart!
-              ctx.beginPath();
-              ctx.arc(cx, cy, boxSize * 0.14, 0, 2 * Math.PI);
-              ctx.fill();
-              continue;
-            }
-
             if (isFinder || isAlignmentPattern) {
               // Classic full square finder / alignment pattern (drawn with slight overlap to prevent anti-aliasing gaps)
               ctx.fillRect(x0 - 0.15, y0 - 0.15, boxSize + 0.3, boxSize + 0.3);
@@ -643,21 +768,6 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               drawStyledPoint(ctx, x0, y0, cx, cy, boxSize, pointStyle);
             }
           }
-        }
-
-        // Draw shape outline if requested
-        if (qrShape !== 'square' && drawOutline && shapePoints.length > 0) {
-          ctx.beginPath();
-          ctx.moveTo(shapePoints[0][0], shapePoints[0][1]);
-          for (let i = 1; i < shapePoints.length; i++) {
-            ctx.lineTo(shapePoints[i][0], shapePoints[i][1]);
-          }
-          ctx.closePath();
-          ctx.strokeStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
-          ctx.lineWidth = outlineWidth;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.stroke();
         }
       }
 
