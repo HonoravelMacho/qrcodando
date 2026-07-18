@@ -9,6 +9,7 @@
 **Qrcodando** é uma ferramenta web desenvolvida para transformar códigos QR tradicionais em designs únicos e atraentes, mantendo a integridade de leitura rápida e robusta. Você pode escolher diferentes estilos de pontos/módulos, gerenciar cores em tempo real e até incluir logotipos personalizados com desvio automático de colisão.
 
 ### ✨ Recursos Principais:
+- **Imagens de Fundo Artísticas (Novo!):** Faça upload de qualquer imagem para servir de pano de fundo ao QR Code, com controles deslizantes de opacidade da imagem e placa de contraste inteligente integrada.
 - **Estilos de Módulos (Pontos):** 
   - **Quadrados:** O visual clássico e ultra-scannable.
   - **Círculos:** Suave e moderno.
@@ -19,6 +20,16 @@
 - **Paleta de Cores Avançada:** Escolha entre preenchimento sólido clássico ou gradientes radiais suaves.
 - **Logotipos Personalizados:** Faça upload de imagens de logo com controle refinado de margem e detecção automática de colisão para que os códigos QR permaneçam perfeitamente legíveis.
 - **Visualização de Código em Tempo Real:** Explore e estude a implementação de baixo nível do motor de desenho de QR Code diretamente na interface.
+
+---
+
+## 📢 Notas Importantes desta Edição (Leitura Recomendada)
+
+- **Suporte a Imagens de Fundo:**
+  - Nesta versão, as imagens de fundo estão **totalmente funcionais na Silhueta Quadrada** utilizando todos os tipos de pontos/módulos.
+  - As silhuetas de **Círculo** e **Coração** ainda não oferecem suporte completo para imagens de fundo (isso será corrigido nas próximas atualizações!).
+  - Se você **não utilizar** uma imagem de fundo, todos os recursos (incluindo todas as silhuetas e estilos de pontos) funcionam perfeitamente com precisão de 100%.
+- **Disponibilidade na Web:** Em breve, o Qrcodando estará disponível para acesso direto via qualquer navegador web tradicional, além do formato de extensão!
 
 ---
 

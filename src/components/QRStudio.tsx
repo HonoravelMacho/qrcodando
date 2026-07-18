@@ -17,7 +17,9 @@ import {
   RefreshCw,
   Sliders,
   Palette,
-  Droplets
+  Droplets,
+  Layers,
+  Image as ImageIcon
 } from 'lucide-react';
 import ColorWheel from './ColorWheel';
 
@@ -214,6 +216,19 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
   const [logoName, setLogoName] = useState<string>('');
   
+  // New States for Background Image & Tab Control
+  const [showLogo, setShowLogo] = useState<boolean>(true);
+  const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null);
+  const [bgName, setBgName] = useState<string>('');
+  const [showBgImage, setShowBgImage] = useState<boolean>(false);
+  const [adaptiveContrast, setAdaptiveContrast] = useState<boolean>(true);
+  const [bgImageData, setBgImageData] = useState<Uint8ClampedArray | null>(null);
+  const [activeTab, setActiveTab] = useState<'logo' | 'background'>('logo');
+  const bgInputRef = useRef<HTMLInputElement>(null);
+  const [bgImageOpacity, setBgImageOpacity] = useState<number>(0.85);
+  const [qrPlateOpacity, setQrPlateOpacity] = useState<number>(0.15);
+  const [activeColorSlot, setActiveColorSlot] = useState<'fg' | 'bg'>('fg');
+
   // Real-time calculation states
   const [contrastRatio, setContrastRatio] = useState<number>(21);
   const [modulesSkippedPct, setModulesSkippedPct] = useState<number>(0);
@@ -261,7 +276,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
   // Main Canvas Rendering Loop
   useEffect(() => {
     renderQRCode();
-  }, [text, pointStyle, qrShape, drawOutline, outlineWidth, fgColor, bgColor, bgMode, radialColor, paddingRatio, logoImg]);
+  }, [text, pointStyle, qrShape, drawOutline, outlineWidth, fgColor, bgColor, bgMode, radialColor, paddingRatio, logoImg, showLogo, bgImg, showBgImage, adaptiveContrast, bgImageData, bgImageOpacity, qrPlateOpacity]);
 
   const renderQRCode = async () => {
     const canvas = canvasRef.current;
@@ -282,7 +297,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
       // Clear canvas
       ctx.clearRect(0, 0, width, height);
 
-      // Draw background
+      // Draw standard solid/radial background backdrop FIRST (so transparent PNGs don't show a black canvas)
       if (bgMode === 'solid') {
         ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
         ctx.fillRect(0, 0, width, height);
@@ -292,9 +307,14 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         grad.addColorStop(1, `rgb(${radialColor[0]}, ${radialColor[1]}, ${radialColor[2]})`);
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, width, height);
-      } else {
-        // Transparent
-        ctx.clearRect(0, 0, width, height);
+      }
+
+      // Draw background image with adjustable opacity on top
+      if (bgImg && showBgImage) {
+        ctx.save();
+        ctx.globalAlpha = bgImageOpacity;
+        ctx.drawImage(bgImg, 0, 0, width, height);
+        ctx.restore();
       }
 
       const borderModules = 4;
@@ -312,6 +332,61 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         shapePoints = getHeartPoints(centerX, centerY, qrSize);
       }
 
+      // Helper to sample background luminance at standard coordinates, blending with bgColor based on alpha and opacity
+      const getLuminanceAt = (sx: number, sy: number): number => {
+        if (!bgImageData) {
+          return 0.2126 * (bgColor[0] / 255) + 0.7152 * (bgColor[1] / 255) + 0.0722 * (bgColor[2] / 255);
+        }
+        const px = Math.min(511, Math.max(0, Math.floor(sx)));
+        const py = Math.min(511, Math.max(0, Math.floor(sy)));
+        const idx = (py * 512 + px) * 4;
+        const rVal = bgImageData[idx];
+        const gVal = bgImageData[idx+1];
+        const bVal = bgImageData[idx+2];
+        const aVal = bgImageData[idx+3] / 255; // Alpha from 0.0 to 1.0
+        
+        // Blend image pixel with standard background color (bgColor) based on opacity and alpha
+        const effectiveAlpha = aVal * bgImageOpacity;
+        const rBlended = rVal * effectiveAlpha + bgColor[0] * (1 - effectiveAlpha);
+        const gBlended = gVal * effectiveAlpha + bgColor[1] * (1 - effectiveAlpha);
+        const bBlended = bVal * effectiveAlpha + bgColor[2] * (1 - effectiveAlpha);
+        
+        return 0.2126 * (rBlended / 255) + 0.7152 * (gBlended / 255) + 0.0722 * (bBlended / 255);
+      };
+
+      const bgLuminance = 0.2126 * (bgColor[0] / 255) + 0.7152 * (bgColor[1] / 255) + 0.0722 * (bgColor[2] / 255);
+      const isBgLight = bgLuminance > 0.45;
+
+      // Finder pattern color: if we draw a clean bgColor plate behind the finders,
+      // their contrast is defined solely by whether bgColor is light or dark!
+      const finderColor = isBgLight ? `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})` : '#ffffff';
+
+      // Module color resolver with adaptive contrast and uniform finder protection
+      const getModuleColor = (x: number, y: number, r: number = -1, c: number = -1): string => {
+        // If it's part of a finder pattern, return its pre-calculated uniform color (GUARANTEES scanability!)
+        if (r >= 0 && c >= 0) {
+          if (r < 8 && c < 8) return finderColor;
+          if (r < 8 && c >= N - 8) return finderColor;
+          if (r >= N - 8 && c < 8) return finderColor;
+        }
+
+        if (bgImg && showBgImage && adaptiveContrast && bgImageData) {
+          // If contrast plate is opaque enough, just draw standard dark modules on top of it
+          if (qrPlateOpacity > 0.4) {
+            return isBgLight ? `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})` : '#ffffff';
+          }
+          
+          const l = getLuminanceAt(x, y);
+          
+          if (l > 0.45) {
+            return `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+          } else {
+            return '#ffffff';
+          }
+        }
+        return `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+      };
+
       // Prepare logo analyzer if we have a logo
       let logoWidth = 0;
       let logoHeight = 0;
@@ -319,12 +394,14 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
       let logoY = 0;
       let logoAlphaData: Uint8Array | null = null;
 
-      if (logoImg) {
+      const activeLogo = (logoImg && showLogo) ? logoImg : null;
+
+      if (activeLogo) {
         // Logo size should occupy max 26% of QR size
         const maxLogoSize = width * 0.26;
-        const scale = Math.min(maxLogoSize / logoImg.width, maxLogoSize / logoImg.height);
-        logoWidth = logoImg.width * scale;
-        logoHeight = logoImg.height * scale;
+        const scale = Math.min(maxLogoSize / activeLogo.width, maxLogoSize / activeLogo.height);
+        logoWidth = activeLogo.width * scale;
+        logoHeight = activeLogo.height * scale;
         logoX = (width - logoWidth) / 2;
         logoY = (height - logoHeight) / 2;
 
@@ -334,7 +411,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         offCanvas.height = Math.ceil(logoHeight);
         const offCtx = offCanvas.getContext('2d');
         if (offCtx) {
-          offCtx.drawImage(logoImg, 0, 0, logoWidth, logoHeight);
+          offCtx.drawImage(activeLogo, 0, 0, logoWidth, logoHeight);
           const imgData = offCtx.getImageData(0, 0, logoWidth, logoHeight);
           // Store alpha values
           logoAlphaData = new Uint8Array(imgData.width * imgData.height);
@@ -342,6 +419,63 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             logoAlphaData[i / 4] = imgData.data[i + 3]; // Alpha channel (0-255)
           }
         }
+      }
+
+      // Helper to draw rounded rectangle for background plate
+      const drawRoundedRect = (ctx2d: CanvasRenderingContext2D, px: number, py: number, pw: number, ph: number, pr: number) => {
+        ctx2d.beginPath();
+        ctx2d.moveTo(px + pr, py);
+        ctx2d.lineTo(px + pw - pr, py);
+        ctx2d.quadraticCurveTo(px + pw, py, px + pw, py + pr);
+        ctx2d.lineTo(px + pw, py + ph - pr);
+        ctx2d.quadraticCurveTo(px + pw, py + ph, px + pw - pr, py + ph);
+        ctx2d.lineTo(px + pr, py + ph);
+        ctx2d.quadraticCurveTo(px, py + ph, px, py + ph - pr);
+        ctx2d.lineTo(px, py + pr);
+        ctx2d.quadraticCurveTo(px, py, px + pr, py);
+        ctx2d.closePath();
+        ctx2d.fill();
+      };
+
+      // Draw shape-matching QR Plate (backplate) for perfect contrast
+      if (qrPlateOpacity > 0) {
+        ctx.save();
+        ctx.fillStyle = `rgba(255, 255, 255, ${qrPlateOpacity})`;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+        ctx.shadowBlur = 15;
+
+        if (qrShape === 'heart') {
+          const S = qrSize * 0.44;
+          const margin = 16;
+          const S_out = S + margin * Math.sqrt(2);
+          const R_out = S_out / 2;
+          const leftLobeX_out = centerX - S_out * 0.35355;
+          const rightLobeX_out = centerX + S_out * 0.35355;
+          const lobeY_out = centerY - S_out * 0.35355;
+
+          ctx.beginPath();
+          ctx.arc(leftLobeX_out, lobeY_out, R_out, -Math.PI / 4, 3 * Math.PI / 4, true);
+          ctx.lineTo(centerX, centerY + S_out * 0.70715);
+          ctx.lineTo(centerX + S_out * 0.70715, centerY);
+          ctx.arc(rightLobeX_out, lobeY_out, R_out, Math.PI / 4, 5 * Math.PI / 4, true);
+          ctx.closePath();
+          ctx.fill();
+        } else if (qrShape === 'circle') {
+          const R = qrSize * 0.5;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, R + 16, 0, 2 * Math.PI);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          // Square shape
+          const platePadding = 16;
+          const plateX = centerX - qrSize / 2 - platePadding;
+          const plateY = centerY - qrSize / 2 - platePadding;
+          const plateW = qrSize + platePadding * 2;
+          const plateH = qrSize + platePadding * 2;
+          drawRoundedRect(ctx, plateX, plateY, plateW, plateH, 24);
+        }
+        ctx.restore();
       }
 
       // Check module collisions
@@ -387,7 +521,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             const hash = Math.sin(lx * 12.9898 + ly * 78.233) * 43758.5453;
             const rand = hash - Math.floor(hash);
             if (rand > 0.46) {
-              ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+              ctx.fillStyle = getModuleColor(lx, ly);
               ctx.beginPath();
               const cx = lx;
               const cy = ly;
@@ -405,6 +539,18 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(Math.PI / 4);
+
+        // Draw solid backgrounds under the three finder patterns to protect them from the background image
+        if (showBgImage) {
+          ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
+          const fpSize = sBoxSize * 8; // 8 modules wide (7 finder + 1 quiet zone)
+          // Top-Left Finder
+          ctx.fillRect(sStart - sBoxSize * 0.5, sStart - sBoxSize * 0.5, fpSize, fpSize);
+          // Top-Right Finder
+          ctx.fillRect(sStart + (N - 7.5) * sBoxSize, sStart - sBoxSize * 0.5, fpSize, fpSize);
+          // Bottom-Left Finder
+          ctx.fillRect(sStart - sBoxSize * 0.5, sStart + (N - 7.5) * sBoxSize, fpSize, fpSize);
+        }
 
         for (let r = 0; r < N; r++) {
           for (let c = 0; c < N; c++) {
@@ -426,7 +572,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             const screenX = centerX + (cx * cosVal - cy * sinVal);
             const screenY = centerY + (cx * sinVal + cy * cosVal);
 
-            if (logoImg && logoAlphaData) {
+            if (activeLogo && logoAlphaData) {
               if (screenX >= logoX && screenX <= logoX + logoWidth && screenY >= logoY && screenY <= logoY + logoHeight) {
                 const localX = Math.floor(screenX - logoX);
                 const localY = Math.floor(screenY - logoY);
@@ -473,7 +619,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               for (const rCenter of coords) {
                 for (const cCenter of coords) {
                   const isOverlappingFinder = 
-                    (rCenter < 8 && cCenter < 8) ||
+                     (rCenter < 8 && cCenter < 8) ||
                     (rCenter < 8 && cCenter >= N - 8) ||
                     (rCenter >= N - 8 && cCenter < 8);
                   
@@ -487,7 +633,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               return false;
             })();
 
-            ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+            ctx.fillStyle = getModuleColor(screenX, screenY, r, c);
             if (isFinder || isAlignmentPattern) {
               ctx.fillRect(x0 - 0.15, y0 - 0.15, sBoxSize + 0.3, sBoxSize + 0.3);
             } else {
@@ -552,7 +698,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             const hash = Math.sin(lx * 12.9898 + ly * 78.233) * 43758.5453;
             const rand = hash - Math.floor(hash);
             if (rand > 0.46) {
-              ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+              ctx.fillStyle = getModuleColor(lx, ly);
               ctx.beginPath();
               const cx = lx;
               const cy = ly;
@@ -568,6 +714,18 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         // Draw the real QR Code centered at (centerX, centerY) - NO ROTATION
         ctx.save();
         ctx.translate(centerX, centerY);
+
+        // Draw solid backgrounds under the three finder patterns to protect them from the background image
+        if (showBgImage) {
+          ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
+          const fpSize = sBoxSize * 8; // 8 modules wide
+          // Top-Left Finder
+          ctx.fillRect(sStart - sBoxSize * 0.5, sStart - sBoxSize * 0.5, fpSize, fpSize);
+          // Top-Right Finder
+          ctx.fillRect(sStart + (N - 7.5) * sBoxSize, sStart - sBoxSize * 0.5, fpSize, fpSize);
+          // Bottom-Left Finder
+          ctx.fillRect(sStart - sBoxSize * 0.5, sStart + (N - 7.5) * sBoxSize, fpSize, fpSize);
+        }
 
         for (let r = 0; r < N; r++) {
           for (let c = 0; c < N; c++) {
@@ -587,7 +745,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             const screenX = centerX + cx;
             const screenY = centerY + cy;
 
-            if (logoImg && logoAlphaData) {
+            if (activeLogo && logoAlphaData) {
               if (screenX >= logoX && screenX <= logoX + logoWidth && screenY >= logoY && screenY <= logoY + logoHeight) {
                 const localX = Math.floor(screenX - logoX);
                 const localY = Math.floor(screenY - logoY);
@@ -648,7 +806,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               return false;
             })();
 
-            ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+            ctx.fillStyle = getModuleColor(screenX, screenY, r, c);
             if (isFinder || isAlignmentPattern) {
               ctx.fillRect(x0 - 0.15, y0 - 0.15, sBoxSize + 0.3, sBoxSize + 0.3);
             } else {
@@ -674,7 +832,17 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
 
       } else {
         // Standard Square shape drawing logic
-        ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+        // Draw solid backgrounds under the three finder patterns to protect them from the background image
+        if (showBgImage) {
+          ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
+          const fpSize = boxSize * 8; // 8 modules wide
+          // Top-Left Finder
+          ctx.fillRect(borderPx - boxSize * 0.5, borderPx - boxSize * 0.5, fpSize, fpSize);
+          // Top-Right Finder
+          ctx.fillRect(borderPx + (N - 7.5) * boxSize, borderPx - boxSize * 0.5, fpSize, fpSize);
+          // Bottom-Left Finder
+          ctx.fillRect(borderPx - boxSize * 0.5, borderPx + (N - 7.5) * boxSize, fpSize, fpSize);
+        }
 
         for (let r = 0; r < N; r++) {
           for (let c = 0; c < N; c++) {
@@ -692,7 +860,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             const cy = (y0 + y1) / 2;
 
             // --- Collision dodge algorithm ---
-            if (logoImg && logoAlphaData) {
+            if (activeLogo && logoAlphaData) {
               // Check if center of module lies inside the logo bounding box
               if (cx >= logoX && cx <= logoX + logoWidth && cy >= logoY && cy <= logoY + logoHeight) {
                 const localX = Math.floor(cx - logoX);
@@ -759,6 +927,8 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
               return false;
             })();
 
+            ctx.fillStyle = getModuleColor(cx, cy, r, c);
+
             if (isFinder || isAlignmentPattern) {
               // Classic full square finder / alignment pattern (drawn with slight overlap to prevent anti-aliasing gaps)
               ctx.fillRect(x0 - 0.15, y0 - 0.15, boxSize + 0.3, boxSize + 0.3);
@@ -777,15 +947,15 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
       setIsReadable(skippedPct <= 30.0);
 
       // Draw the central logo on top of skipped points
-      if (logoImg) {
+      if (activeLogo) {
         ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
         ctx.shadowBlur = 8;
-        ctx.drawImage(logoImg, logoX, logoY, logoWidth, logoHeight);
+        ctx.drawImage(activeLogo, logoX, logoY, logoWidth, logoHeight);
         ctx.shadowBlur = 0; // reset
       }
 
       // Trigger update back to parent component for telemetry/status synchronization
-      onStyleUpdate(pointStyle, rgbToHex(fgColor[0], fgColor[1], fgColor[2]), rgbToHex(bgColor[0], bgColor[1], bgColor[2]), !!logoImg);
+      onStyleUpdate(pointStyle, rgbToHex(fgColor[0], fgColor[1], fgColor[2]), rgbToHex(bgColor[0], bgColor[1], bgColor[2]), !!activeLogo);
 
     } catch (err) {
       console.error('Error generating QR code: ', err);
@@ -812,6 +982,41 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
     setLogoImg(null);
     setLogoName('');
     if (logoInputRef.current) logoInputRef.current.value = '';
+  };
+
+  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setBgName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        setBgImg(img);
+        setShowBgImage(true);
+        
+        // Analyze background image colors for adaptive contrast
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = 512;
+        offCanvas.height = 512;
+        const offCtx = offCanvas.getContext('2d');
+        if (offCtx) {
+          offCtx.drawImage(img, 0, 0, 512, 512);
+          const imgData = offCtx.getImageData(0, 0, 512, 512);
+          setBgImageData(imgData.data);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearBg = () => {
+    setBgImg(null);
+    setBgName('');
+    setBgImageData(null);
+    if (bgInputRef.current) bgInputRef.current.value = '';
   };
 
   const downloadQR = () => {
@@ -973,124 +1178,328 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
             </div>
             
             <ColorWheel 
-              color={fgColor} 
-              onChange={(rgb) => setFgColor(rgb)} 
+              color={activeColorSlot === 'fg' ? fgColor : bgColor} 
+              onChange={(rgb) => {
+                if (activeColorSlot === 'fg') {
+                  setFgColor(rgb);
+                } else {
+                  setBgColor(rgb);
+                }
+              }} 
             />
 
             <div className="grid grid-cols-2 gap-2 mt-1">
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 uppercase mb-1">Pincel (Foreground)</label>
-                <div className="flex items-center gap-1.5 bg-[#0f172a] border border-[#334155] p-2 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setActiveColorSlot('fg')}
+                className={`flex flex-col text-left p-2 rounded-lg border transition-all cursor-pointer ${
+                  activeColorSlot === 'fg' 
+                    ? 'bg-[#1e293b] border-[#38bdf8]' 
+                    : 'bg-[#0f172a] border-[#334155] opacity-70 hover:opacity-100'
+                }`}
+              >
+                <label className="block text-[9px] font-semibold text-zinc-400 uppercase mb-1 cursor-pointer">Pincel (Foreground)</label>
+                <div className="flex items-center gap-1.5">
                   <span className="w-4 h-4 rounded-md border border-white/20 block" style={{ backgroundColor: rgbToHex(fgColor[0], fgColor[1], fgColor[2]) }} />
                   <span className="text-xs font-mono text-zinc-300">{rgbToHex(fgColor[0], fgColor[1], fgColor[2])}</span>
                 </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 uppercase mb-1">Plano Fundo (Background)</label>
-                <div className="flex items-center gap-1.5 bg-[#0f172a] border border-[#334155] p-2 rounded-lg cursor-pointer hover:border-zinc-700 transition-colors"
-                     onClick={() => {
-                       // Toggle simple background presets for convenience
-                       const nextBg = bgColor[0] === 15 ? [255, 255, 255] : [15, 23, 42];
-                       setBgColor(nextBg as any);
-                     }}>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setActiveColorSlot('bg')}
+                className={`flex flex-col text-left p-2 rounded-lg border transition-all cursor-pointer ${
+                  activeColorSlot === 'bg' 
+                    ? 'bg-[#1e293b] border-[#38bdf8]' 
+                    : 'bg-[#0f172a] border-[#334155] opacity-70 hover:opacity-100'
+                }`}
+              >
+                <label className="block text-[9px] font-semibold text-zinc-400 uppercase mb-1 cursor-pointer">Plano Fundo (Background)</label>
+                <div className="flex items-center gap-1.5">
                   <span className="w-4 h-4 rounded-md border border-white/20 block" style={{ backgroundColor: rgbToHex(bgColor[0], bgColor[1], bgColor[2]) }} />
                   <span className="text-xs font-mono text-zinc-300">{rgbToHex(bgColor[0], bgColor[1], bgColor[2])}</span>
                 </div>
-              </div>
+              </button>
             </div>
           </div>
 
-          {/* Logo Collision and Padding Configurations */}
+          {/* CUSTOMIZER TABS FOR LOGO / BACKGROUND */}
           <div className="flex flex-col gap-4">
-            <span className="text-xs font-semibold text-[#64748b] uppercase tracking-widest">Invasão de Logo Orgânica</span>
+            {/* Tab Headers */}
+            <div className="flex bg-[#0f172a] p-1.5 rounded-xl border border-[#334155]">
+              <button
+                onClick={() => setActiveTab('logo')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'logo'
+                    ? 'bg-[#334155] text-white shadow-md'
+                    : 'text-[#94a3b8] hover:text-[#f1f5f9]'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Logo Central
+              </button>
+              <button
+                onClick={() => setActiveTab('background')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'background'
+                    ? 'bg-[#334155] text-white shadow-md'
+                    : 'text-[#94a3b8] hover:text-[#f1f5f9]'
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                Fundo de Imagem
+              </button>
+            </div>
 
-            {/* Real upload file block */}
-            <div className="border border-[#334155] bg-[#0f172a] rounded-xl p-4 flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <div className="bg-[#38bdf8]/10 p-2 rounded-lg text-[#38bdf8]">
-                  <Upload className="w-4 h-4" />
+            {/* TAB CONTENT: LOGO CENTRAL */}
+            {activeTab === 'logo' && (
+              <div className="flex flex-col gap-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[#64748b] uppercase tracking-widest">Invasão de Logo Orgânica</span>
+                  
+                  {/* Logo visibility toggle */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold text-zinc-400">Exibir Logo</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={showLogo}
+                        onChange={(e) => setShowLogo(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4.5 bg-[#334155] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#38bdf8]"></div>
+                    </label>
+                  </div>
                 </div>
-                <div className="flex-1 overflow-hidden">
-                  <p className="text-xs text-white font-semibold truncate">
-                    {logoName || "Carregar logo transparente"}
+
+                {/* Real upload file block */}
+                <div className="border border-[#334155] bg-[#0f172a] rounded-xl p-4 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-[#38bdf8]/10 p-2 rounded-lg text-[#38bdf8]">
+                      <Upload className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-xs text-white font-semibold truncate">
+                        {logoName || "Carregar logo transparente"}
+                      </p>
+                      <p className="text-[10px] text-[#64748b]">PNG ou JPG (canal alfa recomendado)</p>
+                    </div>
+                  </div>
+
+                  <input
+                    id="logo-file-input"
+                    type="file"
+                    ref={logoInputRef}
+                    onChange={handleLogoUpload}
+                    accept="image/png, image/jpeg"
+                    className="hidden"
+                  />
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => logoInputRef.current?.click()}
+                      className="flex-1 bg-[#38bdf8] hover:bg-[#7dd3fc] text-[#0f172a] font-bold text-xs py-2 rounded-lg transition-colors cursor-pointer text-center"
+                    >
+                      Procurar Arquivo
+                    </button>
+                    {logoImg && (
+                      <button
+                        onClick={clearLogo}
+                        className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-lg transition-colors"
+                        title="Remover logotipo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Slider to adjust organic margin padding */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-[11px] font-semibold text-[#64748b] uppercase tracking-widest">
+                      Margem de Segurança (Padding):
+                    </label>
+                    <span className="text-xs font-mono text-[#38bdf8] font-semibold">{(paddingRatio).toFixed(1)}x</span>
+                  </div>
+                  <input
+                    id="padding-slider"
+                    type="range"
+                    min="1.0"
+                    max="2.5"
+                    step="0.1"
+                    value={paddingRatio}
+                    disabled={!logoImg || !showLogo}
+                    onChange={(e) => setPaddingRatio(parseFloat(e.target.value))}
+                    className="w-full accent-[#38bdf8] h-1.5 bg-[#0f172a] rounded-lg cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                  />
+                  <p className="text-[9px] text-[#64748b] mt-1">Ajuste o raio de evasão dos pontos ao redor das bordas do logo.</p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: BACKGROUND IMAGE */}
+            {activeTab === 'background' && (
+              <div className="flex flex-col gap-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[#64748b] uppercase tracking-widest">Imagem de Fundo Artística</span>
+                  
+                  {/* Background visibility toggle */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold text-zinc-400">Ativar Imagem</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={showBgImage}
+                        disabled={!bgImg}
+                        onChange={(e) => setShowBgImage(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4.5 bg-[#334155] peer-focus:outline-none rounded-full peer peer-disabled:opacity-30 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#38bdf8]"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Upload Section with specific dimensions and instructions */}
+                <div className="border border-[#334155] bg-[#0f172a] rounded-xl p-4 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-[#38bdf8]/10 p-2 rounded-lg text-[#38bdf8]">
+                      <ImageIcon className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-xs text-white font-semibold truncate">
+                        {bgName || "Carregar imagem de fundo"}
+                      </p>
+                      <p className="text-[10px] text-[#38bdf8] font-semibold">Tamanho ideal: 512x512 pixels</p>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-[#94a3b8] leading-relaxed bg-[#1e293b]/40 p-2 rounded-lg border border-[#334155]/30">
+                    💡 <span className="font-semibold text-white">Instruções:</span> A imagem será redimensionada para encaixar no canvas. Formatos compatíveis: JPG ou PNG. Use imagens contrastantes para resultados espetaculares.
                   </p>
-                  <p className="text-[10px] text-[#64748b]">PNG com canal Alfa (transparência)</p>
+
+                  <input
+                    id="bg-file-input"
+                    type="file"
+                    ref={bgInputRef}
+                    onChange={handleBgUpload}
+                    accept="image/png, image/jpeg"
+                    className="hidden"
+                  />
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => bgInputRef.current?.click()}
+                      className="flex-1 bg-[#38bdf8] hover:bg-[#7dd3fc] text-[#0f172a] font-bold text-xs py-2 rounded-lg transition-colors cursor-pointer text-center"
+                    >
+                      Procurar Imagem
+                    </button>
+                    {bgImg && (
+                      <button
+                        onClick={clearBg}
+                        className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-lg transition-colors"
+                        title="Remover imagem de fundo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Adaptive Contrast Option */}
+                <div className="bg-[#0f172a] border border-[#334155]/60 rounded-xl p-3.5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-white font-semibold">Contraste Adaptativo</span>
+                      <span className="text-[9px] text-[#94a3b8]">Inverte os pontos dinamicamente para manter 100% legível</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={adaptiveContrast}
+                        disabled={!bgImg || !showBgImage}
+                        onChange={(e) => setAdaptiveContrast(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4.5 bg-[#334155] peer-focus:outline-none rounded-full peer peer-disabled:opacity-30 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#38bdf8]"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Sliders for background image customization */}
+                <div className="flex flex-col gap-4 bg-[#0f172a] border border-[#334155]/60 rounded-xl p-3.5">
+                  {/* Background Image Opacity Slider */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[11px] font-semibold text-[#64748b] uppercase tracking-widest">
+                        Opacidade da Imagem:
+                      </label>
+                      <span className="text-xs font-mono text-[#38bdf8] font-semibold">{Math.round(bgImageOpacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1.0"
+                      step="0.05"
+                      value={bgImageOpacity}
+                      disabled={!bgImg || !showBgImage}
+                      onChange={(e) => setBgImageOpacity(parseFloat(e.target.value))}
+                      className="w-full accent-[#38bdf8] h-1.5 bg-[#1e293b] rounded-lg cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                    />
+                    <p className="text-[9px] text-[#94a3b8] mt-1">
+                      Reduza para misturar com a cor de fundo escolhida e destacar mais o QR.
+                    </p>
+                  </div>
+
+                  {/* QR Contrast Plate Opacity Slider */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[11px] font-semibold text-[#64748b] uppercase tracking-widest">
+                        Placa de Contraste (QR):
+                      </label>
+                      <span className="text-xs font-mono text-[#38bdf8] font-semibold">{Math.round(qrPlateOpacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="1.0"
+                      step="0.05"
+                      value={qrPlateOpacity}
+                      disabled={!bgImg || !showBgImage}
+                      onChange={(e) => setQrPlateOpacity(parseFloat(e.target.value))}
+                      className="w-full accent-[#38bdf8] h-1.5 bg-[#1e293b] rounded-lg cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                    />
+                    <p className="text-[9px] text-[#94a3b8] mt-1">
+                      Adiciona um escudo inteligente (no mesmo formato do QR) garantindo 100% de leitura!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Fallback background style selector */}
+                <div className="mt-1">
+                  <label className="block text-[11px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">Fallback do Fundo (Sem Imagem)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'solid', label: 'Sólido' },
+                      { id: 'radial', label: 'Radial' },
+                      { id: 'transparent', label: 'Transparente' }
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        onClick={() => setBgMode(mode.id as any)}
+                        className={`text-xs py-2 px-1 rounded-lg font-semibold text-center transition-all ${
+                          bgMode === mode.id
+                            ? 'bg-[#334155] border-none text-[#f1f5f9]'
+                            : 'bg-[#0f172a] border border-[#334155] text-[#94a3b8] hover:text-[#f1f5f9]'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <input
-                id="logo-file-input"
-                type="file"
-                ref={logoInputRef}
-                onChange={handleLogoUpload}
-                accept="image/png, image/jpeg"
-                className="hidden"
-              />
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => logoInputRef.current?.click()}
-                  className="flex-1 bg-[#38bdf8] hover:bg-[#7dd3fc] text-[#0f172a] font-bold text-xs py-2 rounded-lg transition-colors cursor-pointer text-center"
-                >
-                  Procurar Arquivo
-                </button>
-                {logoImg && (
-                  <button
-                    onClick={clearLogo}
-                    className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-lg transition-colors"
-                    title="Remover logotipo"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Slider to adjust organic margin padding */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-[11px] font-semibold text-[#64748b] uppercase tracking-widest">
-                  Margem de Segurança (Padding):
-                </label>
-                <span className="text-xs font-mono text-[#38bdf8] font-semibold">{(paddingRatio).toFixed(1)}x</span>
-              </div>
-              <input
-                id="padding-slider"
-                type="range"
-                min="1.0"
-                max="2.5"
-                step="0.1"
-                value={paddingRatio}
-                disabled={!logoImg}
-                onChange={(e) => setPaddingRatio(parseFloat(e.target.value))}
-                className="w-full accent-[#38bdf8] h-1.5 bg-[#0f172a] rounded-lg cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-              />
-              <p className="text-[9px] text-[#64748b] mt-1">Ajuste o raio de evasão dos pontos ao redor das bordas do logo.</p>
-            </div>
-
-            {/* Background mode selector */}
-            <div className="mt-1">
-              <label className="block text-[11px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">Estilo de Fundo</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'solid', label: 'Sólido' },
-                  { id: 'radial', label: 'Radial' },
-                  { id: 'transparent', label: 'Transparente' }
-                ].map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setBgMode(mode.id as any)}
-                    className={`text-xs py-2 px-1 rounded-lg font-semibold text-center transition-all ${
-                      bgMode === mode.id
-                        ? 'bg-[#334155] border-none text-[#f1f5f9]'
-                        : 'bg-[#0f172a] border border-[#334155] text-[#94a3b8] hover:text-[#f1f5f9]'
-                    }`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
 
         </div>
