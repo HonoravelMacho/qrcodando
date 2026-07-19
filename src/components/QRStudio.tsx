@@ -440,7 +440,7 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
       // Draw shape-matching QR Plate (backplate) for perfect contrast
       if (qrPlateOpacity > 0) {
         ctx.save();
-        ctx.fillStyle = `rgba(255, 255, 255, ${qrPlateOpacity})`;
+        ctx.fillStyle = `rgba(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]}, ${qrPlateOpacity})`;
         ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
         ctx.shadowBlur = 15;
 

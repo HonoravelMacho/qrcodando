@@ -114,7 +114,7 @@ export default function App() {
               Gerador de QR Codes Artísticos & Customizáveis
             </h2>
             <p className="text-sm text-[#94a3b8] mt-2 max-w-2xl leading-relaxed">
-              O <strong>Qrcodando</strong> revoluciona a escaneabilidade ao fundir geometrias artísticas customizadas com contorno e desvio automático de logotipos (Collision Dodge) usando canais de transparência, tudo operando sob o nível Reed-Solomon H (30%) de correção matemática.
+              O <strong>Qrcodando</strong> é um projeto experimental de código aberto feito para criar QR Codes artísticos e personalizados com precisão matemática. Ele combina geometrias customizadas e desvio inteligente de logotipos sob o nível Reed-Solomon H (30%) de correção, focando na união entre estética e escaneabilidade.
             </p>
           </div>
         </div>
