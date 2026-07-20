@@ -540,8 +540,8 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         ctx.translate(centerX, centerY);
         ctx.rotate(Math.PI / 4);
 
-        // Draw solid backgrounds under the three finder patterns to protect them from the background image
-        if (showBgImage) {
+        // Draw solid backgrounds under the three finder patterns to protect them from busy backgrounds or transparency
+        if (showBgImage || bgMode === 'transparent' || qrPlateOpacity > 0) {
           ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
           const fpSize = sBoxSize * 8; // 8 modules wide (7 finder + 1 quiet zone)
           // Top-Left Finder
@@ -715,8 +715,8 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
         ctx.save();
         ctx.translate(centerX, centerY);
 
-        // Draw solid backgrounds under the three finder patterns to protect them from the background image
-        if (showBgImage) {
+        // Draw solid backgrounds under the three finder patterns to protect them from busy backgrounds or transparency
+        if (showBgImage || bgMode === 'transparent' || qrPlateOpacity > 0) {
           ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
           const fpSize = sBoxSize * 8; // 8 modules wide
           // Top-Left Finder
@@ -832,8 +832,8 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
 
       } else {
         // Standard Square shape drawing logic
-        // Draw solid backgrounds under the three finder patterns to protect them from the background image
-        if (showBgImage) {
+        // Draw solid backgrounds under the three finder patterns to protect them from busy backgrounds or transparency
+        if (showBgImage || bgMode === 'transparent' || qrPlateOpacity > 0) {
           ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
           const fpSize = boxSize * 8; // 8 modules wide
           // Top-Left Finder
@@ -1334,6 +1334,55 @@ export default function QRStudio({ onStyleUpdate }: QRStudioProps) {
                     className="w-full accent-[#38bdf8] h-1.5 bg-[#0f172a] rounded-lg cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   />
                   <p className="text-[9px] text-[#64748b] mt-1">Ajuste o raio de evasão dos pontos ao redor das bordas do logo.</p>
+                </div>
+
+                {/* Background Style and Contrast Plate inside Logo Central */}
+                <div className="mt-2 bg-[#0f172a] border border-[#334155]/60 rounded-xl p-3.5 flex flex-col gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#64748b] uppercase tracking-widest mb-1.5">Estilo do Fundo</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'solid', label: 'Sólido' },
+                        { id: 'radial', label: 'Radial' },
+                        { id: 'transparent', label: 'Transparente' }
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => setBgMode(mode.id as any)}
+                          className={`text-xs py-2 px-1 rounded-lg font-semibold text-center transition-all ${
+                            bgMode === mode.id
+                              ? 'bg-[#334155] border-none text-[#f1f5f9]'
+                              : 'bg-[#0f172a] border border-[#334155] text-[#94a3b8] hover:text-[#f1f5f9]'
+                          }`}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* QR Contrast Plate Opacity Slider (always enabled for transparency control) */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[11px] font-semibold text-[#64748b] uppercase tracking-widest">
+                        Placa de Contraste (QR):
+                      </label>
+                      <span className="text-xs font-mono text-[#38bdf8] font-semibold">{Math.round(qrPlateOpacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="1.0"
+                      step="0.05"
+                      value={qrPlateOpacity}
+                      onChange={(e) => setQrPlateOpacity(parseFloat(e.target.value))}
+                      className="w-full accent-[#38bdf8] h-1.5 bg-[#1e293b] rounded-lg cursor-pointer"
+                    />
+                    <p className="text-[9px] text-[#94a3b8] mt-1 leading-relaxed">
+                      Controla a opacidade da placa de contraste inteligente atrás dos pontos. Essencial para manter a escaneabilidade se o fundo for transparente!
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
